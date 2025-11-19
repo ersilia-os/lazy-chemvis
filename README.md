@@ -1,22 +1,22 @@
-# My Ersilia Python Package
+# LazyChemVis
 
-Template repository for an Ersilia Python package.
+Automated 2D visualizations of chemical spaces.
 
-This package provides a foundation for developing and distributing Python tools within the Ersilia ecosystem. It is designed to help researchers and developers quickly set up, share, and maintain reproducible code for AI/ML models, particularly in the context of antimicrobial drug discovery. If you are developing a package, use this paragraph as placeholder for an introduction about the package.
+This package allows for visualizing chemical spaces using a fit/transform logic. TO-DO
 
 ## Installation
 
 To get started, create a Conda environment:
 
 ```bash
-conda create -n my_env python=3.12
-conda activate my_env
+conda create -n lazychemvis python=3.12
+conda activate lazychemvis
 ```
 
 Then install the package using pip:
 
 ```bash
-pip install git+https://github.com/ersilia-os/my-ersilia-python-package.git
+pip install git+https://github.com/ersilia-os/lazy-chemvis.git
 ```
 
 ## Usage
