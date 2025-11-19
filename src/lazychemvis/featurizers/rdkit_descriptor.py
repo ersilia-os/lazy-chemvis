@@ -7,27 +7,47 @@ from tqdm import tqdm
 
 from rdkit import Chem
 from rdkit.ML.Descriptors import MoleculeDescriptors
-from rdkit.Chem import Descriptors
 from rdkit import RDLogger
 from sklearn.impute import SimpleImputer
 from sklearn.preprocessing import RobustScaler
+from sklearn.feature_selection import VarianceThreshold
 
 RDLogger.DisableLog("rdApp.*")
 
+DESCRIPTORS = [
+    "MolWt",
+    "MolLogP",
+    "MolMR",
+    "TPSA",
+    "FractionCSP3",
+    "NumHDonors",
+    "NumHAcceptors",
+    "NumRotatableBonds",
+    "HeavyAtomCount",
+    "Chi0v",
+    "Chi1v",
+    "Chi2v",
+    "Chi3v",
+    "Kappa1",
+    "Kappa2",
+]
+
 
 class RDKitDescriptor(object):
-    def __init__(self, dir_path: str = None):
+    def __init__(self, dir_path: str):
         if not os.path.exists(dir_path):
             os.makedirs(dir_path)
         self.featurizer_name = "rdkit_descriptor"
-        descriptor_names = sorted([desc_name for desc_name, _ in Descriptors._descList])
+        descriptor_names = sorted(DESCRIPTORS)
         self.calculator = MoleculeDescriptors.MolecularDescriptorCalculator(
             descriptor_names
         )
         self.features = [n.lower() for n in descriptor_names]
+        self.dir_path = os.path.abspath(dir_path)
 
     def fit(self, smiles_list):
         imputer = SimpleImputer()
+        feature_filter = VarianceThreshold(threshold=0.0)
         scaler = RobustScaler()
         R = []
         for smiles in tqdm(smiles_list, desc="Fitting RDKit descriptors"):
@@ -39,11 +59,16 @@ class RDKitDescriptor(object):
                 continue
             R += [desc_values]
         X = np.array(R)
-        X = np.clip(np.vstack(X), -1e5, 1e5)
+        X = np.clip(X, -1e5, 1e5)
         imputer.fit(X)
+        feature_filter.fit(X)
+        X = feature_filter.transform(X)
         scaler.fit(X)
+        X = scaler.transform(X)
         self.imputer = imputer
+        self.feature_filter = feature_filter
         self.scaler = scaler
+        self.X = X
         return self
 
     def transform(self, smiles_list):
@@ -63,7 +88,8 @@ class RDKitDescriptor(object):
             R += [desc_values]
         X = np.array(R)
         X = self.imputer.transform(X)
-        X = np.clip(np.vstack(X), -1e5, 1e5)
+        X = self.feature_filter.transform(X)
+        X = np.clip(X, -1e5, 1e5)
         X = self.scaler.transform(X)
         return X
 
@@ -80,14 +106,17 @@ class RDKitDescriptor(object):
         with open(os.path.join(desc_path, "featurizer.json"), "w") as f:
             json.dump(metadata, f)
         joblib.dump(self.imputer, os.path.join(desc_path, "imputer.pkl"))
+        joblib.dump(self.feature_filter, os.path.join(desc_path, "feature_filter.pkl"))
         joblib.dump(self.scaler, os.path.join(desc_path, "scaler.pkl"))
+        numpy_path = os.path.join(desc_path, "X.npy")
+        np.save(numpy_path, self.X)
 
     @classmethod
     def load(cls, dir_path: str):
         if not os.path.exists(dir_path):
             raise FileNotFoundError(f"Directory {dir_path} does not exist.")
         desc_path = os.path.join(dir_path, "rdkit_descriptor")
-        obj = cls()
+        obj = cls(dir_path)
         with open(os.path.join(desc_path, "featurizer.json"), "r") as f:
             metadata = json.load(f)
             rdkit_version = metadata.get("rdkit_version")
@@ -99,5 +128,7 @@ class RDKitDescriptor(object):
                     f"RDKit version mismatch: got {current_rdkit_version}, expected {rdkit_version}"
                 )
         obj.imputer = joblib.load(os.path.join(desc_path, "imputer.pkl"))
+        obj.feature_filter = joblib.load(os.path.join(desc_path, "feature_filter.pkl"))
         obj.scaler = joblib.load(os.path.join(desc_path, "scaler.pkl"))
+        obj.X = np.load(os.path.join(desc_path, "X.npy"))
         return obj

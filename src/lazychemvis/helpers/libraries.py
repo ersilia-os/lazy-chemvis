@@ -16,9 +16,11 @@ def load_reference_library(lib_name: str):
         os.path.dirname(os.path.abspath(__file__)),
         "..",
         "..",
+        "..",
         "data",
         lib_name + ".csv",
     )
+    data_path = os.path.abspath(data_path)
     with open(data_path, "r") as f:
         reader = csv.reader(f)
         next(reader)

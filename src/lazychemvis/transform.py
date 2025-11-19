@@ -1,8 +1,8 @@
 import os
 import pandas as pd
 
-from .helpers import load_lib_input
-from .artifacts import PCAArtifact
+from .helpers.libraries import load_lib_input
+from .artifacts.pca import PCAArtifact
 
 
 class Pipeline(object):
@@ -23,7 +23,7 @@ class Pipeline(object):
         df.to_csv(self.output_path, index=False)
 
 
-if __name__ == "__main__":
+def main():
     import argparse
 
     parser = argparse.ArgumentParser()
@@ -45,3 +45,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
     pipe = Pipeline(args.lib_input, args.dir_path, args.output_path)
     pipe.run()
+
+
+if __name__ == "__main__":
+    main()
