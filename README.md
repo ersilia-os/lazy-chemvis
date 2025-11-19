@@ -2,7 +2,7 @@
 
 Automated 2D visualizations of chemical spaces.
 
-This package allows for visualizing chemical spaces using a fit/transform logic. TO-DO
+This package allows for visualizing chemical spaces using a fit-transform logic. **TO-DO**
 
 ## Installation
 
@@ -21,17 +21,13 @@ pip install git+https://github.com/ersilia-os/lazy-chemvis.git
 
 ## Usage
 
-Provide an end-to-end usage example. All data should be included in the repository for reproducibility.
+### Fit projections for a given chemical space
 
-Example:
+**TO-DO**
 
-```python
-from my_package.core import hello
-
-hello("Ersilia")
+```bash
+lazychemvis_fit --lib_input smiles_10k.csv --dir_path my_output
 ```
-
-This prints `"Hello, Ersilia!"` in the Python terminal.
 
 ## About the Ersilia Open Source Initiative
 
