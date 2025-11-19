@@ -7,6 +7,7 @@ from ..projectors.pca import PCAProjector
 
 class PCAFixed(nn.Module):
     """Non-trainable PCA implemented as a PyTorch module."""
+
     def __init__(self, n_features, n_components):
         super().__init__()
         self.register_buffer("mean", torch.zeros(n_features))
@@ -30,19 +31,21 @@ class PCAFixed(nn.Module):
     def load(path, map_location=None):
         ckpt = torch.load(path, map_location=map_location)
         model = PCAFixed(
-            n_features=ckpt["n_features"],
-            n_components=ckpt["n_components"]
+            n_features=ckpt["n_features"], n_components=ckpt["n_components"]
         )
         model.load_state_dict(ckpt["state_dict"])
         model.eval()
         return model
 
     def save(self, path):
-        torch.save({
-            "state_dict": self.state_dict(),
-            "n_features": self.mean.shape[0],
-            "n_components": self.components.shape[0],
-        }, path)
+        torch.save(
+            {
+                "state_dict": self.state_dict(),
+                "n_features": self.mean.shape[0],
+                "n_components": self.components.shape[0],
+            },
+            path,
+        )
 
 
 class PCASurrogate(object):

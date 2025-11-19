@@ -2,7 +2,6 @@ import os
 from typing import List
 import torch
 import joblib
-import torch
 import torch.nn as nn
 
 from ..featurizers.rdkit_descriptor import RDKitDescriptor
@@ -24,14 +23,18 @@ class PCAArtifact(object):
         ckpt = torch.load(path, map_location=map_location)
         n_features = ckpt["n_features"]
         n_components = ckpt["n_components"]
+
         class _PCALoader(nn.Module):
             def __init__(self):
                 super().__init__()
                 self.register_buffer("mean", torch.zeros(n_features))
-                self.register_buffer("components", torch.zeros(n_components, n_features))
+                self.register_buffer(
+                    "components", torch.zeros(n_components, n_features)
+                )
 
             def forward(self, x):
                 return (x - self.mean) @ self.components.T
+
         model = _PCALoader()
         model.load_state_dict(ckpt["state_dict"])
         model.eval()

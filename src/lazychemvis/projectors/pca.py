@@ -42,12 +42,8 @@ class PCAProjector(object):
     @classmethod
     def load(cls, dir_path: str):
         projector = cls(dir_path=dir_path)
-        projector.reducer = joblib.load(
-            os.path.join(dir_path, "pca", "orig.pkl")
-        )
-        projector.scaler = joblib.load(
-            os.path.join(dir_path, "pca", "axis_scaler.pkl")
-        )
+        projector.reducer = joblib.load(os.path.join(dir_path, "pca", "orig.pkl"))
+        projector.scaler = joblib.load(os.path.join(dir_path, "pca", "axis_scaler.pkl"))
         numpy_path = os.path.join(dir_path, "pca", "reduced.npy")
         projector.X = np.load(numpy_path)
         return projector
