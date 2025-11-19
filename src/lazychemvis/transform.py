@@ -6,7 +6,6 @@ from .artifacts import PCAArtifact
 
 
 class Pipeline(object):
-
     def __init__(self, lib_input: str, dir_path: str, output_path: str):
         self.lib_input = lib_input
         self.dir_path = os.path.abspath(dir_path)

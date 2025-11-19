@@ -5,7 +5,6 @@ from .projectors.pca import PCAProjector
 
 
 class Pipeline(object):
-
     def __init__(self, lib_input: str, dir_path: str):
         self.lib_input = lib_input
         self.dir_path = dir_path
@@ -17,11 +16,10 @@ class Pipeline(object):
         pca_proj = PCAProjector(dir_path=self.dir_path)
         pca_proj.fit(smiles_list)
         pca_proj.save()
-        
+
     def run(self):
         smiles_list = load_lib_input(self.lib_input)
         self._pca_step(smiles_list)
-
 
 
 if __name__ == "__main__":

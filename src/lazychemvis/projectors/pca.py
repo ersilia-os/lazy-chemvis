@@ -9,7 +9,6 @@ from typing import List
 
 
 class PCAProjector(object):
-
     def __init__(self, dir_path: str):
         self.projector_name = "pca_projector"
         if not os.path.exists(dir_path):
@@ -27,7 +26,7 @@ class PCAProjector(object):
         scaler = MinMaxScaler(feature_range=(-1, 1))
         scaler.fit(X_reduced)
         self.scaler = scaler
-    
+
     def save(self):
         proj_path = os.path.join(self.dir_path, self.projector_name)
         if os.path.exists(proj_path):
@@ -39,12 +38,10 @@ class PCAProjector(object):
     @classmethod
     def load(cls, dir_path: str):
         projector = cls(dir_path=dir_path)
-        projector.reducer = joblib.load(os.path.join(
-            dir_path, "pca_projector", "pca_orig.pkl"
-        ))
-        projector.scaler = joblib.load(os.path.join(
-            dir_path, "pca_projector", "pca_axis_scaler.pkl"
-        ))
+        projector.reducer = joblib.load(
+            os.path.join(dir_path, "pca_projector", "pca_orig.pkl")
+        )
+        projector.scaler = joblib.load(
+            os.path.join(dir_path, "pca_projector", "pca_axis_scaler.pkl")
+        )
         return projector
-
-    

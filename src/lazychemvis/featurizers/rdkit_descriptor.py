@@ -34,9 +34,7 @@ class RDKitDescriptor(object):
             mol = Chem.MolFromSmiles(smiles)
             if mol is None:
                 continue
-            desc_values = np.array(
-                self.calculator.CalcDescriptors(mol), dtype=float
-            )
+            desc_values = np.array(self.calculator.CalcDescriptors(mol), dtype=float)
             if not np.all(np.isfinite(desc_values)):
                 continue
             R += [desc_values]

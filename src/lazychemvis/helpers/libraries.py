@@ -17,7 +17,7 @@ def load_reference_library(lib_name: str):
         "..",
         "..",
         "data",
-        lib_name + ".csv"
+        lib_name + ".csv",
     )
     with open(data_path, "r") as f:
         reader = csv.reader(f)
