@@ -34,7 +34,22 @@ DESCRIPTORS = [
 
 
 class RDKitDescriptor(object):
+    """
+    RDKit descriptor featurizer that computes a fixed set of molecular
+    descriptors and applies preprocessing steps (imputation, variance
+    filtering, and robust scaling). The fitted transformations can be
+    saved and reused to ensure consistent descriptor processing across
+    datasets.
+    """
     def __init__(self, dir_path: str):
+        """
+        Initialize the RDKitDescriptor featurizer.
+
+        Parameters
+        ----------
+        dir_path : str
+            Directory where the featurizer parameters and metadata will be saved.
+        """
         if not os.path.exists(dir_path):
             os.makedirs(dir_path)
         self.featurizer_name = "rdkit_descriptor"
@@ -46,6 +61,27 @@ class RDKitDescriptor(object):
         self.dir_path = os.path.abspath(dir_path)
 
     def fit(self, smiles_list):
+    
+        """
+        Fit the descriptor preprocessing pipeline on a list of SMILES.
+
+        This performs:
+        - RDKit descriptor calculation
+        - removal of molecules with invalid descriptors
+        - missing value imputation (SimpleImputer)
+        - zero-variance feature filtering (VarianceThreshold)
+        - robust scaling (RobustScaler)
+
+        Parameters
+        ----------
+        smiles_list : list of str
+            List of SMILES strings used to fit the preprocessing pipeline.
+
+        Returns
+        -------
+        RDKitDescriptor
+            The fitted descriptor object (self).
+        """
         imputer = SimpleImputer()
         feature_filter = VarianceThreshold(threshold=0.0)
         scaler = RobustScaler()
@@ -72,6 +108,22 @@ class RDKitDescriptor(object):
         return self
 
     def transform(self, smiles_list):
+        """
+        Transform a list of SMILES into preprocessed descriptor vectors.
+
+        Applies the previously fitted preprocessing steps:
+        imputation → variance filtering → clipping → scaling.
+
+        Parameters
+        ----------
+        smiles_list : list of str
+            SMILES to featurize.
+
+        Returns
+        -------
+        numpy.ndarray
+            Array of shape (n_molecules, n_features_after_filtering).
+        """
         R = []
         n_desc = len(self.features)
         for smiles in tqdm(smiles_list, desc="Featurizing with RDKit descriptors"):
@@ -94,6 +146,14 @@ class RDKitDescriptor(object):
         return X
 
     def save(self):
+        """
+        Save the fitted descriptor preprocessing pipeline to disk.
+
+        This stores:
+        - RDKit version metadata
+        - imputer, feature filter, and scaler objects
+        - the fitted descriptor matrix X
+        """
         dir_path = self.dir_path
         desc_path = os.path.join(dir_path, self.featurizer_name)
         if os.path.exists(desc_path):
@@ -113,6 +173,22 @@ class RDKitDescriptor(object):
 
     @classmethod
     def load(cls, dir_path: str):
+        """
+        Load a previously saved RDKitDescriptor featurizer.
+
+        Checks RDKit version compatibility and restores the imputer,
+        variance filter, scaler, and training descriptor matrix.
+
+        Parameters
+        ----------
+        dir_path : str
+            Directory that contains the saved featurizer.
+
+        Returns
+        -------
+        RDKitDescriptor
+            The loaded featurizer object.
+        """
         if not os.path.exists(dir_path):
             raise FileNotFoundError(f"Directory {dir_path} does not exist.")
         desc_path = os.path.join(dir_path, "rdkit_descriptor")
