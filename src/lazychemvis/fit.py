@@ -10,9 +10,13 @@ stored in the specified directory.
 from .helpers.libraries import load_lib_input
 from .featurizers.ecfp import ECFPFeaturizer
 from .featurizers.rdkit_descriptor import RDKitDescriptor
+from .featurizers.chemeleon import CheMeleonFeaturizer
+from .featurizers.mole import MolEFeaturizer
 
 from .projectors.tmap_projector import TMAPProjector
 from .projectors.pca import PCAProjector
+from .projectors.tsne_projector import TSNEProjector
+from .projectors.umap_projector import UMAPProjector
 
 from .surrogates.pca import PCASurrogate
 from .plots.scatter import ScatterPlot
@@ -111,7 +115,31 @@ class Pipeline(object):
         # 3. Plot reference chemical space
         scatter = ScatterPlot(projection_name="tmap", dir_path=self.dir_path)
         scatter.plot_reference()
+    def _tsne_step(self, smiles_list):
+        featurizer = CheMeleonFeaturizer(dir_path=self.dir_path)
+        featurizer.fit(smiles_list=smiles_list)
+        featurizer.save()
 
+        tsne_proj = TSNEProjector(dir_path=self.dir_path)
+        tsne_proj.fit()
+        tsne_proj.save()
+
+        scatter = ScatterPlot(projection_name="tsne", dir_path=self.dir_path)
+        scatter.plot_reference()
+
+    def _umap_step(self, smiles_list):
+        featurizer = MolEFeaturizer(dir_path=self.dir_path)
+        featurizer.fit(smiles_list=smiles_list)
+        featurizer.save()
+
+        tsne_proj = UMAPProjector(dir_path=self.dir_path)
+        tsne_proj.fit()
+        tsne_proj.save()
+        
+        scatter = ScatterPlot(projection_name="umap", dir_path=self.dir_path)
+        scatter.plot_reference()
+
+ 
     def run(self):
         """
         Run the full PCA pipeline.
@@ -126,6 +154,8 @@ class Pipeline(object):
         smiles_list = load_lib_input(self.lib_input)
         self._pca_step(smiles_list)
         self._tmap_step(smiles_list)
+        self._tsne_step(smiles_list)
+        self._umap_step(smiles_list)
 
 
 def main():

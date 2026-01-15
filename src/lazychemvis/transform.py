@@ -3,6 +3,7 @@ import pandas as pd
 
 from .helpers.libraries import load_lib_input
 from .artifacts.pca import PCAArtifact
+from .artifacts.tmap import TMAPArtifact
 
 
 class Pipeline(object):
@@ -16,10 +17,17 @@ class Pipeline(object):
         X_reduced = pca_artifact.transform(smiles_list)
         df = pd.DataFrame(X_reduced, columns=["pca_x", "pca_y"])
         return df
+    
+    def _tmap_step(self, smiles_list):
+        # This calls the Artifact we just wrote
+        tmap_artifact = TMAPArtifact(dir_name=self.dir_path)
+        X_reduced = tmap_artifact.transform(smiles_list)
+        return pd.DataFrame(X_reduced, columns=["tmap_x", "tmap_y"])
 
     def run(self):
         smiles_list = load_lib_input(self.lib_input)
         df = self._pca_step(smiles_list)
+        df = self._tmap_step(smiles_list)
         df.to_csv(self.output_path, index=False)
 
 

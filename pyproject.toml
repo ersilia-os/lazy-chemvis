@@ -21,7 +21,9 @@ dependencies = [
   "torch==2.9.1",
   "pandas==2.3.0",
   "datashader==0.18.2",
-  "matplotlib==3.10.8"
+  "matplotlib==3.10.8",
+  "ersilia==0.1.52",
+  "umap-learn==0.5.7"
 ]
 
 [tool.setuptools.packages.find]

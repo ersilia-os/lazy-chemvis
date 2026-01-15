@@ -2,15 +2,13 @@
 ECFP (Morgan fingerprint) featurizer.
 
 This module provides the ECFPFeaturizer class, which computes binary Morgan
-fingerprints from SMILES and applies preprocessing steps consisting of
-variance filtering and robust scaling. The fitted transformers and training
+fingerprints from SMILES. The fitted transformers and training
 matrix can be saved and reloaded reproducibly.
 """
 
 import os
 import json
 import shutil
-import joblib
 import numpy as np
 from tqdm import tqdm
 
@@ -61,7 +59,16 @@ class ECFPFeaturizer(object):
         fp = AllChem.GetMorganFingerprintAsBitVect(
             mol, radius=self.radius, nBits=self.n_bits
         )
-        return np.array(fp, dtype=float)
+        return np.array(fp, dtype="int8")
+
+    def _compute_fps(self, smiles_list):
+        X = np.zeros((len(smiles_list), self.n_bits), dtype="int8")
+        for i, smi in tqdm(enumerate(smiles_list), desc="Featurizing with ECFP"):
+            fp = self._compute_fp(smi)
+            if fp is None:
+                continue
+            X[i,:] = fp
+        return X
 
     def fit(self, smiles_list):
         """
@@ -83,27 +90,9 @@ class ECFPFeaturizer(object):
         ECFPFeaturizer
             The fitted featurizer (self).
         """
-        feature_filter = VarianceThreshold(threshold=0.0)
-        scaler = RobustScaler()
-
-        R = []
-        for smi in tqdm(smiles_list, desc="Fitting ECFP descriptors"):
-            fp = self._compute_fp(smi)
-            if fp is not None:
-                R.append(fp)
-
-        X = np.array(R, dtype=float)
 
         # Fit preprocessing
-        feature_filter.fit(X)
-        X = feature_filter.transform(X)
-
-        scaler.fit(X)
-        X = scaler.transform(X)
-
-        self.feature_filter = feature_filter
-        self.scaler = scaler
-        self.X = X
+        self.X = self._compute_fps(smiles_list)
 
         return self
 
@@ -121,16 +110,7 @@ class ECFPFeaturizer(object):
         numpy.ndarray
             Array of shape (n_molecules, n_processed_bits).
         """
-        R = []
-        for smi in tqdm(smiles_list, desc="Featurizing with ECFP"):
-            fp = self._compute_fp(smi)
-            if fp is None:
-                fp = np.zeros(self.n_bits, dtype=float)
-            R.append(fp)
-
-        X = np.array(R, dtype=float)
-        X = self.feature_filter.transform(X)
-        X = self.scaler.transform(X)
+        X = self._compute_fps(smiles_list)
 
         return X
 
@@ -152,9 +132,6 @@ class ECFPFeaturizer(object):
 
         with open(os.path.join(desc_path, "featurizer.json"), "w") as f:
             json.dump(metadata, f)
-
-        joblib.dump(self.feature_filter, os.path.join(desc_path, "feature_filter.pkl"))
-        joblib.dump(self.scaler, os.path.join(desc_path, "scaler.pkl"))
 
         np.save(os.path.join(desc_path, "X.npy"), self.X)
 
@@ -178,8 +155,6 @@ class ECFPFeaturizer(object):
             n_bits=metadata["n_bits"],
         )
 
-        obj.feature_filter = joblib.load(os.path.join(desc_path, "feature_filter.pkl"))
-        obj.scaler = joblib.load(os.path.join(desc_path, "scaler.pkl"))
         obj.X = np.load(os.path.join(desc_path, "X.npy"))
 
         return obj
