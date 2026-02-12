@@ -82,6 +82,18 @@ class RDKitDescriptor(object):
         RDKitDescriptor
             The fitted descriptor object (self).
         """
+        fp_path = os.path.join(self.dir_path,self.featurizer_name, "X.npy")
+
+        # 1. Skip computation if fingerprints are already on disk
+        if os.path.exists(fp_path):
+            print(f"[*] Found existing fingerprints at {fp_path}. Loading...")
+            X = np.load(fp_path)
+            self.X = X
+            return self
+        else:
+            if smiles_list is None:
+                raise ValueError("X.npy not found and no smiles_list provided to compute them.")
+            
         imputer = SimpleImputer()
         feature_filter = VarianceThreshold(threshold=0.0)
         scaler = RobustScaler()

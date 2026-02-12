@@ -74,6 +74,13 @@ class CheMeleonFeaturizer(object):
         """
         desc_path = os.path.join(self.dir_path, self.featurizer_name)
         temp_dir = os.path.join(desc_path,"tmp_batches")
+        x_path = os.path.join(desc_path, "X.npy")
+
+        # --- NEW CHECK: Global Skip ---
+        if os.path.exists(x_path):
+            print(f"[*] {self.featurizer_name} descriptors already calculated. Loading from disk...")
+            self.X = np.load(x_path)
+            return self
 
         self._compute_fps(smiles_list)
 
@@ -91,7 +98,7 @@ class CheMeleonFeaturizer(object):
 
     def transform(self, smiles_list):
         """
-        Transform SMILES into descriptors using the served Ersilia model.
+        Transform SMILES into ECFP.
         """
         X = self._compute_fps(smiles_list)
         

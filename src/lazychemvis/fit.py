@@ -11,7 +11,7 @@ from .helpers.libraries import load_lib_input
 from .featurizers.ecfp import ECFPFeaturizer
 from .featurizers.rdkit_descriptor import RDKitDescriptor
 from .featurizers.chemeleon import CheMeleonFeaturizer
-from .featurizers.mole import MolEFeaturizer
+from .featurizers.clamp import CLAMPFeaturizer
 
 from .projectors.tmap_projector import TMAPProjector
 from .projectors.pca import PCAProjector
@@ -19,6 +19,10 @@ from .projectors.tsne_projector import TSNEProjector
 from .projectors.umap_projector import UMAPProjector
 
 from .surrogates.pca import PCASurrogate
+from .surrogates.tmap import TMAPSurrogate
+from .surrogates.tsne import TSNESurrogate
+from .surrogates.umap import UMAPSurrogate
+
 from .plots.scatter import ScatterPlot
 
 
@@ -37,7 +41,7 @@ class Pipeline(object):
     into the same PCA space via the PCAArtifact class.
     """
 
-    def __init__(self, lib_input: str, dir_path: str, tmap_env:str):
+    def __init__(self, lib_input: str, dir_path: str, tmap_env:str, use_cache:bool=False):
         """
         Initialize the pipeline.
 
@@ -50,7 +54,8 @@ class Pipeline(object):
         """
         self.lib_input = lib_input
         self.dir_path = dir_path
-        self.tmap_env=tmap_env
+        self.tmap_env = tmap_env
+        self.use_cache = use_cache
 
     def _pca_step(self, smiles_list):
         """
@@ -71,7 +76,8 @@ class Pipeline(object):
         # 1. Fit and save descriptor featurizer
         featurizer = RDKitDescriptor(dir_path=self.dir_path)
         featurizer.fit(smiles_list)
-        featurizer.save()
+        if not self.use_cache:
+            featurizer.save()
 
         # 2. Fit and save PCA projection
         pca_proj = PCAProjector(dir_path=self.dir_path)
@@ -112,40 +118,64 @@ class Pipeline(object):
         tmap_proj = TMAPProjector(dir_path=self.dir_path)
         tmap_proj.fit(self.tmap_env)
 
-        # 3. Plot reference chemical space
+        # 3. Fit and save TMAP surrogate model
+        tmap_surrogate = TMAPSurrogate(dir_path=self.dir_path)
+        tmap_surrogate.fit()
+        tmap_surrogate.save()
+
+        # 4. Plot reference chemical space
         scatter = ScatterPlot(projection_name="tmap", dir_path=self.dir_path)
         scatter.plot_reference()
+
     def _tsne_step(self, smiles_list):
+
+        # 1. Fit and save CheMeleon featurizer
         featurizer = CheMeleonFeaturizer(dir_path=self.dir_path)
         featurizer.fit(smiles_list=smiles_list)
         featurizer.save()
 
+        # 2. Fit and save TSNE projection
         tsne_proj = TSNEProjector(dir_path=self.dir_path)
         tsne_proj.fit()
         tsne_proj.save()
 
+        # 3. Fit and save TSNE surrogate model
+        tsne_surrogate = TSNESurrogate(dir_path=self.dir_path)
+        tsne_surrogate.fit()
+        tsne_surrogate.save()
+
+        # 4. Plot reference chemical space
         scatter = ScatterPlot(projection_name="tsne", dir_path=self.dir_path)
         scatter.plot_reference()
 
     def _umap_step(self, smiles_list):
-        featurizer = MolEFeaturizer(dir_path=self.dir_path)
+        
+        # 1. Fit and save CLAMP featurizer
+        featurizer = CLAMPFeaturizer(dir_path=self.dir_path)
         featurizer.fit(smiles_list=smiles_list)
         featurizer.save()
 
+        # 2. Fit and save UMAP projection
         tsne_proj = UMAPProjector(dir_path=self.dir_path)
         tsne_proj.fit()
         tsne_proj.save()
+
+        # 3. Fit and save UMAP surrogate model
+        umap_surrogate = UMAPSurrogate(dir_path=self.dir_path)
+        umap_surrogate.fit()
+        umap_surrogate.save()
         
+        # 4. Plot reference chemical space
         scatter = ScatterPlot(projection_name="umap", dir_path=self.dir_path)
         scatter.plot_reference()
 
  
     def run(self):
         """
-        Run the full PCA pipeline.
+        Run the full  pipeline.
 
         This loads the SMILES library using load_lib_input() and executes the
-        PCA step on the resulting molecules.
+        all the step on the resulting molecules.
 
         Returns
         -------
@@ -153,9 +183,9 @@ class Pipeline(object):
         """
         smiles_list = load_lib_input(self.lib_input)
         self._pca_step(smiles_list)
-        self._tmap_step(smiles_list)
-        self._tsne_step(smiles_list)
-        self._umap_step(smiles_list)
+        # self._tmap_step(smiles_list)
+        # self._tsne_step(smiles_list)
+        # self._umap_step(smiles_list)
 
 
 def main():
@@ -184,9 +214,14 @@ def main():
         default="tmap-env",
         help="Path to the TMAP conda environment",
     )
+
+    parser.add_argument("--use_cache",
+        action='store_true',
+        help='Load precoumputed descriptors instead of recomputing them.'
+                                        )
     args = parser.parse_args()
 
-    pipe = Pipeline(args.lib_input, args.dir_path, args.tmap_env)
+    pipe = Pipeline(args.lib_input, args.dir_path, args.tmap_env, args.use_cache)
     pipe.run()
 
 

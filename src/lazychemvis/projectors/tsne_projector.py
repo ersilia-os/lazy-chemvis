@@ -35,7 +35,7 @@ class TSNEProjector(object):
         if X is None:
             raise ValueError("Data matrix X is empty.")
 
-        # 1. PCA step (RETAIN THE OBJECT)
+        # 1. PCA step 
         self.pca = PCA(n_components=50, random_state=42)
         X_pca = self.pca.fit_transform(X)
 

@@ -13,14 +13,14 @@ from ersilia.api import Model
 
 RDLogger.DisableLog("rdApp.*")
 
-class MolEFeaturizer(object):
+class CLAMPFeaturizer(object):
 
-    def __init__(self,dir_path:str, model_id:str='eos4ex3'):
+    def __init__(self,dir_path:str, model_id:str='eos3l5f'):
 
         if not os.path.exists(dir_path):
             os.makedirs(dir_path)
         
-        self.featurizer_name = 'MolE'
+        self.featurizer_name = 'CLAMP'
         self._model_id = model_id
         self._model_instance = None
         self.dir_path = os.path.abspath(dir_path)
@@ -74,6 +74,13 @@ class MolEFeaturizer(object):
         """
         desc_path = os.path.join(self.dir_path, self.featurizer_name)
         temp_dir = os.path.join(desc_path,"tmp_batches")
+        x_path = os.path.join(desc_path, "X.npy")
+
+        # --- NEW CHECK: Global Skip ---
+        if os.path.exists(x_path):
+            print(f"[*] {self.featurizer_name} descriptors already calculated. Loading from disk...")
+            self.X = np.load(x_path)
+            return self
 
         self._compute_fps(smiles_list)
 
@@ -91,7 +98,7 @@ class MolEFeaturizer(object):
 
     def transform(self, smiles_list):
         """
-        Transform SMILES into descriptors using the served Ersilia model.
+        Transform SMILES into ECFP.
         """
         X = self._compute_fps(smiles_list)
         return X
@@ -120,9 +127,9 @@ class MolEFeaturizer(object):
     @classmethod
     def load(cls, dir_path: str):
         """
-        Load a previously saved MolEFeaturizer.
+        Load a previously saved CLAMPFeaturizer.
         """
-        desc_path = os.path.join(dir_path, "MolE")
+        desc_path = os.path.join(dir_path, "CLAMP")
         with open(os.path.join(desc_path, "featurizer.json"), "r") as f:
             metadata = json.load(f)
 

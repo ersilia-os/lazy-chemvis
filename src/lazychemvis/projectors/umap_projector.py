@@ -11,11 +11,10 @@ import shutil
 import joblib
 import numpy as np
 import umap
-from sklearn.preprocessing import MinMaxScaler
+from sklearn.preprocessing import MinMaxScaler, StandardScaler
 
 # Assuming CheMeleonFeaturizer is in the same project structure
-from ..featurizers.mole import MolEFeaturizer
-
+from ..featurizers.clamp import CLAMPFeaturizer
 
 class UMAPProjector(object):
     """
@@ -29,7 +28,7 @@ class UMAPProjector(object):
       - Saves and loads all components from disk.
     """
 
-    def __init__(self, dir_path: str, n_neighbors: int = 15, min_dist: float = 0.1, metric: str = 'euclidean'):
+    def __init__(self, dir_path: str, n_neighbors: int = 100, min_dist: float = 0.1, metric: str = 'cosine'):
         """
         Create a UMAPProjector.
 
@@ -53,27 +52,33 @@ class UMAPProjector(object):
         self.min_dist = min_dist
         self.metric = metric
 
+        self.feature_scaler = None
+
     def fit(self):
         """
         Fit UMAP on the stored CheMeleon descriptor matrix.
         """
         # 1. Load the featurizer
-        featurizer = MolEFeaturizer.load(dir_path=self.dir_path)
+        featurizer = CLAMPFeaturizer.load(dir_path=self.dir_path)
         X = featurizer.X
         
         if X is None:
             raise ValueError("Featurizer matrix X is empty. Run featurizer.fit() first.")
-
+        
+        self.feature_scaler = StandardScaler()
+        X_scaled = self.feature_scaler.fit_transform(X)
+        X_scaled = np.nan_to_num(X_scaled)
         # 2. Fit UMAP
         reducer = umap.UMAP(
             n_neighbors=self.n_neighbors,
             min_dist=self.min_dist,
-            n_components=self.n_dim,
+            low_memory=True,
             metric=self.metric,
-            random_state=42  # For reproducibility
+            random_state=42,  # For reproducibility
+            verbose=True
         )
         
-        X_embedded = reducer.fit_transform(X)
+        X_embedded = reducer.fit_transform(X_scaled)
         self.reducer = reducer
 
         # 3. Scale to [-1, 1]
@@ -92,6 +97,7 @@ class UMAPProjector(object):
         
         joblib.dump(self.reducer, os.path.join(proj_path, "orig.pkl"))
         joblib.dump(self.scaler, os.path.join(proj_path, "axis_scaler.pkl"))
+        joblib.dump(self.feature_scaler, os.path.join(proj_path, "feature_scaler.pkl"))
         np.save(os.path.join(proj_path, "reduced.npy"), self.X)
 
     @classmethod
@@ -103,6 +109,7 @@ class UMAPProjector(object):
         proj_folder = os.path.join(dir_path, "umap")
         
         projector.reducer = joblib.load(os.path.join(proj_folder, "orig.pkl"))
+        projector.feature_scaler = joblib.load(os.path.join(proj_folder, "feature_scaler.pkl"))
         projector.scaler = joblib.load(os.path.join(proj_folder, "axis_scaler.pkl"))
         projector.X = np.load(os.path.join(proj_folder, "reduced.npy"))
         

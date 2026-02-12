@@ -16,9 +16,6 @@ from rdkit import Chem
 from rdkit.Chem import AllChem
 from rdkit import RDLogger
 
-from sklearn.preprocessing import RobustScaler
-from sklearn.feature_selection import VarianceThreshold
-
 RDLogger.DisableLog("rdApp.*")
 
 
@@ -92,7 +89,21 @@ class ECFPFeaturizer(object):
         """
 
         # Fit preprocessing
-        self.X = self._compute_fps(smiles_list)
+        fp_path = os.path.join(self.dir_path,self.featurizer_name, "X.npy")
+
+        # 1. Skip computation if fingerprints are already on disk
+        if os.path.exists(fp_path):
+            print(f"[*] Found existing fingerprints at {fp_path}. Loading...")
+            X = np.load(fp_path)
+            self.X = X
+        else:
+            if smiles_list is None:
+                raise ValueError("X.npy not found and no smiles_list provided to compute them.")
+            
+            print(f"[*] Computing fingerprints for {len(smiles_list)} molecules...")
+            self.X = self._compute_fps(smiles_list)
+
+        
 
         return self
 

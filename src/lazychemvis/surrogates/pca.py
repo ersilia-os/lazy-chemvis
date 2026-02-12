@@ -56,6 +56,7 @@ class PCASurrogate(object):
         self.n_dim = 2
 
     def fit(self):
+        print('Fitting PCA surrogate model...')
         pca = PCAProjector.load(dir_path=self.dir_path)
         self.model = PCAFixed.from_sklearn(pca.reducer)
 

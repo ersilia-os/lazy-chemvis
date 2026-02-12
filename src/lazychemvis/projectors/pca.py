@@ -60,17 +60,41 @@ class PCAProjector(object):
         -------
         None
         """
+        # featurizer = RDKitDescriptor.load(dir_path=self.dir_path)
+        # X = featurizer.X
+        # reducer = PCA(n_components=self.n_dim)
+        # reducer.fit(X)
+        # X = reducer.transform(X)
+        # self.reducer = reducer
+        # scaler = MinMaxScaler(feature_range=(-1, 1))
+        # scaler.fit(X)
+        # self.scaler = scaler
+        # X = scaler.transform(X)
+        # self.X = X
+   
         featurizer = RDKitDescriptor.load(dir_path=self.dir_path)
         X = featurizer.X
+        
+        # 1. PCA
         reducer = PCA(n_components=self.n_dim)
-        reducer.fit(X)
-        X = reducer.transform(X)
+        X_pca = reducer.fit_transform(X)
         self.reducer = reducer
-        scaler = MinMaxScaler(feature_range=(-1, 1))
-        scaler.fit(X)
-        self.scaler = scaler
-        X = scaler.transform(X)
-        self.X = X
+        
+        # 2. Robust Scaling (98th percentile)
+        # This prevents 1 outlier from crushing the whole map
+        pmin = np.percentile(X_pca, 1, axis=0) # 1st percentile
+        pmax = np.percentile(X_pca, 99, axis=0) # 99th percentile
+        
+        self.scaler = MinMaxScaler(feature_range=(-1, 1))
+        
+        # We "fake" the fit by giving it the robust bounds
+        # This ensures -1 and 1 represent the bulk of the chemical space
+        X_for_fit = np.array([pmin, pmax])
+        self.scaler.fit(X_for_fit)
+        
+        # 3. Transform (and clip to prevent points going off-screen)
+        X_scaled = self.scaler.transform(X_pca)
+        self.X = X_scaled
 
     def save(self):
         """
