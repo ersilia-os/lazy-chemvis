@@ -5,6 +5,10 @@ import datashader as ds
 import datashader.transfer_functions as tf
 import matplotlib.pyplot as plt
 
+from ..helpers.logger import get_logger
+
+logger = get_logger(__name__)
+
 class ScatterPlot(object):
     def __init__(self, projection_name: str, dir_path: str, output_path:str=''):
         self.projection_name = projection_name
@@ -13,10 +17,9 @@ class ScatterPlot(object):
         
         # Your specific aesthetic settings
         self.background_cmap = ["#e7e2e2", "#cac8c8", "#B1B0B0", "#989797"]
-        self.overlay_color = "#FAA08B"
+        self.overlay_color = "#1E13AC"
         
         # Use a consistent extent for the -1 to 1 artifact space 
-        # (with a tiny margin so points don't touch the spines)
         self.extent = [-1.05, 1.05, -1.05, 1.05]
 
     def _generate_background_image(self):
@@ -53,7 +56,7 @@ class ScatterPlot(object):
         out_path = os.path.join(self.dir_path, self.projection_name, save_name)
         plt.savefig(out_path, dpi=300, bbox_inches='tight')
         plt.close()
-        print(f"[*] Reference plot saved: {out_path}")
+        logger.success(f"Reference plot saved: {out_path}")
 
     def plot_overlay(self, new_coords: np.ndarray, label: str = "New Compounds"):
         """
@@ -86,9 +89,10 @@ class ScatterPlot(object):
 
         out_path = os.path.join(self.output_path, f"{self.projection_name}_plot.png")
 
+        os.makedirs(self.output_path, exist_ok=True)
         plt.savefig(out_path, dpi=300, bbox_inches='tight')
-        print(f"[*] Overlay plot saved: {out_path}")
         plt.close()
+        logger.success(f"Overlay plot saved: {out_path}")
         
     def _apply_styling(self, ax, title):
         """Standardizes the look of the plots."""

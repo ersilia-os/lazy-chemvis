@@ -12,7 +12,11 @@ from sklearn.impute import SimpleImputer
 from sklearn.preprocessing import RobustScaler
 from sklearn.feature_selection import VarianceThreshold
 
+from ..helpers.logger import get_logger
+
 RDLogger.DisableLog("rdApp.*")
+
+logger = get_logger(__name__)
 
 DESCRIPTORS = [
     "MolWt",
@@ -86,7 +90,7 @@ class RDKitDescriptor(object):
 
         # 1. Skip computation if fingerprints are already on disk
         if os.path.exists(fp_path):
-            print(f"[*] Found existing fingerprints at {fp_path}. Loading...")
+            logger.info(f"Found existing descriptors at {fp_path}. Loading...")
             X = np.load(fp_path)
             self.X = X
             return self
@@ -107,12 +111,22 @@ class RDKitDescriptor(object):
                 continue
             R += [desc_values]
         X = np.array(R)
+    
+    # 1. Clip Raw Values (Handling super-large numbers before stats)
         X = np.clip(X, -1e5, 1e5)
+        
+        # 2. Impute (Fit AND Transform)
         imputer.fit(X)
+        X = imputer.transform(X) # <--- THIS WAS MISSING
+        
+        # 3. Filter (Fit AND Transform)
         feature_filter.fit(X)
         X = feature_filter.transform(X)
+        
+        # 4. Scale (Fit AND Transform)
         scaler.fit(X)
         X = scaler.transform(X)
+        
         self.imputer = imputer
         self.feature_filter = feature_filter
         self.scaler = scaler
@@ -150,10 +164,20 @@ class RDKitDescriptor(object):
             except Exception:
                 desc_values = np.array([np.nan] * n_desc, dtype=float)
             R += [desc_values]
+        
         X = np.array(R)
+        
+        # MUST MATCH FIT ORDER EXACTLY:
+        # 1. Clip
+        X = np.clip(X, -1e5, 1e5) 
+        
+        # 2. Impute
         X = self.imputer.transform(X)
+        
+        # 3. Filter
         X = self.feature_filter.transform(X)
-        X = np.clip(X, -1e5, 1e5)
+        
+        # 4. Scale
         X = self.scaler.transform(X)
         return X
 
@@ -209,7 +233,7 @@ class RDKitDescriptor(object):
             metadata = json.load(f)
             rdkit_version = metadata.get("rdkit_version")
             if rdkit_version:
-                print(f"Loaded RDKit version: {rdkit_version}")
+                logger.debug(f"Saved RDKit version: {rdkit_version}")
             current_rdkit_version = Chem.rdBase.rdkitVersion
             if current_rdkit_version != rdkit_version:
                 raise ValueError(

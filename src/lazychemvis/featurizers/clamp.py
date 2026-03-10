@@ -1,4 +1,5 @@
 import os
+import gc
 import json
 import shutil
 import pandas as pd
@@ -11,15 +12,19 @@ from rdkit import RDLogger
 
 from ersilia.api import Model
 
+from ..helpers.logger import get_logger
+
 RDLogger.DisableLog("rdApp.*")
+
+logger = get_logger(__name__)
+
 
 class CLAMPFeaturizer(object):
 
-    def __init__(self,dir_path:str, model_id:str='eos3l5f'):
-
+    def __init__(self, dir_path: str, model_id: str = 'eos3l5f'):
         if not os.path.exists(dir_path):
             os.makedirs(dir_path)
-        
+
         self.featurizer_name = 'CLAMP'
         self._model_id = model_id
         self._model_instance = None
@@ -27,86 +32,115 @@ class CLAMPFeaturizer(object):
 
     @property
     def model(self):
-        """Lazy loader for Ersilia model"""
+        """Lazy loader for Ersilia model."""
         if self._model_instance is None:
-            print(f"Initializing and serving model:{self._model_id}")
+            logger.info(f"Initializing and serving model: {self._model_id}")
             self._model_instance = Model(model_id=self._model_id)
-        #    self._model_instance.fetch()
             self._model_instance.serve()
-
         return self._model_instance
-    
 
     def _compute_fps(self, smiles_list):
-        """
-        Runs the model on  a list of SMILES
-        """
         total_smiles = len(smiles_list)
         batch_size = 2000
-
         desc_path = os.path.join(self.dir_path, self.featurizer_name)
-        temp_dir = os.path.join(desc_path,"tmp_batches")
+        temp_dir = os.path.join(desc_path, "tmp_batches")
+        os.makedirs(temp_dir, exist_ok=True)
 
-        for i in tqdm(range(0,total_smiles, batch_size), desc = "Processing Batches"):
+        for i in tqdm(range(0, total_smiles, batch_size), desc="Processing Batches"):
             batch_idx = i // batch_size
             batch_file = os.path.join(temp_dir, f"batch_{batch_idx}.npy")
-            
+            info_file = os.path.join(temp_dir, f"info_{batch_idx}.csv")
+
             if os.path.exists(batch_file):
                 continue
-                
-            # SLICE the list: from i to i + batch_size
-            current_batch_smiles = smiles_list[i : i + batch_size]
-            
+
+            current_batch_smiles = smiles_list[i: i + batch_size]
+
             try:
                 df_batch = self.model.run(current_batch_smiles)
-                
-                # Keep only numeric fingerprint columns
-                numeric_df = df_batch.select_dtypes(include=[np.number])
-                X_batch = numeric_df.to_numpy(dtype=np.float32)
-                
-                np.save(batch_file, X_batch)
-            except Exception as e:
-                print(f"Error at batch {batch_idx}: {e}")
-    
-    def fit(self, smiles_list):
-        """
-        Fit the featurizer by computing descriptors for the reference set.
-        """
-        desc_path = os.path.join(self.dir_path, self.featurizer_name)
-        temp_dir = os.path.join(desc_path,"tmp_batches")
-        x_path = os.path.join(desc_path, "X.npy")
+                valid_indices = []
+                for idx, s in enumerate(current_batch_smiles):
+                    if s in df_batch['input'].values:
+                        valid_indices.append(i + idx)
 
-        # --- NEW CHECK: Global Skip ---
-        if os.path.exists(x_path):
-            print(f"[*] {self.featurizer_name} descriptors already calculated. Loading from disk...")
+                batch_info = pd.DataFrame({
+                    'original_index': valid_indices,
+                    'smiles': df_batch['input'].values
+                })
+                batch_info.to_csv(info_file, index=False)
+
+                numeric_df = df_batch.select_dtypes(include=[np.number])
+                np.save(batch_file, numeric_df.to_numpy(dtype=np.float32))
+
+                del df_batch, batch_info, numeric_df
+            except Exception as e:
+                logger.error(f"Error at batch {batch_idx}: {e}")
+
+    def fit(self, smiles_list):
+        desc_path = os.path.join(self.dir_path, self.featurizer_name)
+        temp_dir = os.path.join(desc_path, "tmp_batches")
+        x_path = os.path.join(desc_path, "X.npy")
+        csv_out_path = os.path.join(desc_path, "valid_metadata.csv")
+
+        if os.path.exists(x_path) and os.path.exists(csv_out_path):
+            logger.info("CLAMP features already computed. Loading from disk...")
             self.X = np.load(x_path)
             return self
 
         self._compute_fps(smiles_list)
 
-        #Merge files
-        all_files = sorted(
-            [os.path.join(temp_dir, f) for f in os.listdir(temp_dir) if f.endswith('.npy')],
-            key= lambda x: int(os.path.basename(x).split('_')[1].split('.')[0])
+        batch_files = sorted(
+            [f for f in os.listdir(temp_dir) if f.startswith('batch_')],
+            key=lambda x: int(x.split('_')[1].split('.')[0])
         )
-        if not all_files:
-            raise ValueError("No batch files found. Ensure that _compute_fps ran successfully.")
-        else:
-            self.X = np.concatenate([np.load(f) for f in all_files], axis=0)
+
+        # Determine total shape without loading data (avoids doubling peak memory)
+        full_paths = [os.path.join(temp_dir, f) for f in batch_files]
+        shapes = [np.load(p, mmap_mode='r').shape for p in full_paths]
+        n_total = sum(s[0] for s in shapes)
+        n_feat = shapes[0][1]
+        logger.info(f"Merging {len(batch_files)} batch files → {n_total:,} molecules × {n_feat} features")
+
+        # Pre-allocate and fill incrementally — peak memory = final array + one batch
+        self.X = np.empty((n_total, n_feat), dtype=np.float32)
+        all_metadata = []
+        row = 0
+
+        for b_file, shape, full_path in zip(batch_files, shapes, full_paths):
+            batch = np.load(full_path)
+            n = shape[0]
+            self.X[row: row + n] = batch
+            row += n
+            del batch
+            gc.collect()
+
+            info_file = b_file.replace("batch_", "info_").replace(".npy", ".csv")
+            all_metadata.append(pd.read_csv(os.path.join(temp_dir, info_file)))
+
+        self.metadata = pd.concat(all_metadata, ignore_index=True)
+        del all_metadata
+        gc.collect()
+
+        # Persist merged outputs
+        np.save(x_path, self.X)
+        self.metadata.to_csv(csv_out_path, index=False)
+        logger.success(f"Done. Retained {len(self.metadata):,} of {len(smiles_list):,} molecules.")
+
+        # Clean up temp batch files now that X.npy and metadata are on disk
+        try:
+            shutil.rmtree(temp_dir)
+            logger.debug(f"Cleaned up temporary batch files at {temp_dir}")
+        except Exception as e:
+            logger.warning(f"Could not remove temp directory: {e}")
 
         return self
 
     def transform(self, smiles_list):
-        """
-        Transform SMILES into ECFP.
-        """
-        X = self._compute_fps(smiles_list)
-        return X
+        """Transform SMILES into CLAMP embeddings."""
+        return self._compute_fps(smiles_list)
 
     def save(self):
-        """
-        Save the fitted featurizer metadata and training matrix to disk.
-        """
+        """Save the fitted featurizer metadata and training matrix to disk."""
         desc_path = os.path.join(self.dir_path, self.featurizer_name)
         if os.path.exists(desc_path):
             shutil.rmtree(desc_path)
@@ -123,28 +157,44 @@ class CLAMPFeaturizer(object):
 
         if self.X is not None:
             np.save(os.path.join(desc_path, "X.npy"), self.X)
+            logger.debug("Saved: X.npy")
+
+        logger.success("CLAMP featurizer saved successfully.")
 
     @classmethod
     def load(cls, dir_path: str):
-        """
-        Load a previously saved CLAMPFeaturizer.
-        """
+        """Load a previously saved CLAMPFeaturizer."""
         desc_path = os.path.join(dir_path, "CLAMP")
         with open(os.path.join(desc_path, "featurizer.json"), "r") as f:
             metadata = json.load(f)
 
-        obj = cls(
-            dir_path=metadata["dir_path"],
-            model_id=metadata["model_id"]
-        )
+        obj = cls(dir_path=metadata["dir_path"], model_id=metadata["model_id"])
 
         x_path = os.path.join(desc_path, "X.npy")
         if os.path.exists(x_path):
             obj.X = np.load(x_path)
+            logger.debug(f"Loaded: X.npy ({obj.X.shape[0]:,} molecules)")
 
         return obj
 
     def cleanup(self):
-        "Shut down served container"
+        """Shut down served container and remove any leftover temp files."""
         if self._model_instance:
-            self._model_instance.close()
+            try:
+                self._model_instance.close()
+                logger.info(f"Closed Ersilia model: {self._model_id}")
+            except Exception as e:
+                logger.warning(f"Error closing model: {e}")
+            finally:
+                self._model_instance = None
+
+        desc_path = os.path.join(self.dir_path, self.featurizer_name)
+        temp_dir = os.path.join(desc_path, "tmp_batches")
+        x_path = os.path.join(desc_path, "X.npy")
+
+        if os.path.exists(x_path) and os.path.exists(temp_dir):
+            try:
+                shutil.rmtree(temp_dir)
+                logger.info(f"Cleaned up temporary batch files at {temp_dir}")
+            except Exception as e:
+                logger.warning(f"Could not remove temp directory: {e}")

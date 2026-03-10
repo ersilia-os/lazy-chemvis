@@ -25,7 +25,8 @@ dependencies = [
   "ersilia==0.1.52",
   "umap-learn==0.5.7",
   "xgboost==3.1.3",
-  "opentsne==1.0.4"
+  "opentsne==1.0.4",
+  "optuna==4.7.0"
 
 ]
 

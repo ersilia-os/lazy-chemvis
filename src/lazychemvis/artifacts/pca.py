@@ -1,4 +1,5 @@
 import os
+import numpy as np
 from typing import List
 import torch
 import joblib
@@ -116,5 +117,7 @@ class PCAArtifact(object):
 
         # Scale PCA axes to [-1, 1]
         X = self.scaler.transform(X)
+
+        # 4. FORCE values into [-1, 1] range
 
         return X

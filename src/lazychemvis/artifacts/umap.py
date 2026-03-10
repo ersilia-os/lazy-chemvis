@@ -30,8 +30,6 @@ class UMAPArtifact(object):
         # Load the trained MultiOutput XGBoost model
         self.model = joblib.load(os.path.join(proj_path, "xgb_model.joblib"))
         
-        # 3. Load the Scaler
-        self.scaler = joblib.load(os.path.join(proj_path, "axis_scaler.pkl"))
 
     def transform(self, smiles_list: List[str]):
         """
@@ -44,9 +42,6 @@ class UMAPArtifact(object):
         # Step 2: Predict coordinates using the XGBoost model
 
         X_projected = self.model.predict(X)
+    
         
-        # Step 3: Ensure the coordinates are scaled to [-1, 1]
-
-        X_scaled = self.scaler.transform(X_projected)
-        
-        return X_scaled
+        return X_projected

@@ -1,7 +1,7 @@
 import os
 import joblib
 import numpy as np
-from sklearn.neighbors import BallTree
+from sklearn.neighbors import NearestNeighbors
 
 # Importing your specific featurizer and projector
 from ..featurizers.ecfp import ECFPFeaturizer
@@ -31,11 +31,14 @@ class TMAPSurrogate(object):
         if X is None or y_coords is None:
             raise ValueError("Reference ECFP matrix or TMAP coordinates missing.")
 
-        # 3. Build a BallTree for fast nearest-neighbor lookups
-        # Metric 'jaccard' is the standard for chemical Tanimoto similarity
+        # 3. Build a NearestNeighbors index for fast nearest-neighbor lookups
+        # Metric 'jaccard' is the standard for chemical Tanimoto similarity.
+        # Brute-force is used because BallTree degrades to O(N) linear scan on
+        # 2048-dimensional binary data (curse of dimensionality), while brute-force
+        # runs in parallel across all CPU cores via n_jobs=-1.
         print(f"Building TMAP KNN Index for {X.shape[0]} compounds...")
-        # Note: BallTree handles binary data well with jaccard
-        self.knn_index = BallTree(X, metric='jaccard') 
+        self.knn_index = NearestNeighbors(n_neighbors=1, algorithm='brute', metric='jaccard', n_jobs=-1)
+        self.knn_index.fit(X)
         self.coords = y_coords
 
     def save(self):

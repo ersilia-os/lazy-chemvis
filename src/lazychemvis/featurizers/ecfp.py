@@ -16,7 +16,11 @@ from rdkit import Chem
 from rdkit.Chem import AllChem
 from rdkit import RDLogger
 
+from ..helpers.logger import get_logger
+
 RDLogger.DisableLog("rdApp.*")
+
+logger = get_logger(__name__)
 
 
 class ECFPFeaturizer(object):
@@ -64,7 +68,7 @@ class ECFPFeaturizer(object):
             fp = self._compute_fp(smi)
             if fp is None:
                 continue
-            X[i,:] = fp
+            X[i, :] = fp
         return X
 
     def fit(self, smiles_list):
@@ -87,23 +91,19 @@ class ECFPFeaturizer(object):
         ECFPFeaturizer
             The fitted featurizer (self).
         """
+        fp_path = os.path.join(self.dir_path, self.featurizer_name, "X.npy")
 
-        # Fit preprocessing
-        fp_path = os.path.join(self.dir_path,self.featurizer_name, "X.npy")
-
-        # 1. Skip computation if fingerprints are already on disk
+        # Skip computation if fingerprints are already on disk
         if os.path.exists(fp_path):
-            print(f"[*] Found existing fingerprints at {fp_path}. Loading...")
-            X = np.load(fp_path)
-            self.X = X
-        else:
-            if smiles_list is None:
-                raise ValueError("X.npy not found and no smiles_list provided to compute them.")
-            
-            print(f"[*] Computing fingerprints for {len(smiles_list)} molecules...")
-            self.X = self._compute_fps(smiles_list)
+            logger.info(f"Found existing fingerprints at {fp_path}. Loading...")
+            self.X = np.load(fp_path)
+            return self  # early return — do NOT fall through to _compute_fps
 
-        
+        if smiles_list is None:
+            raise ValueError("X.npy not found and no smiles_list provided to compute them.")
+
+        logger.info(f"Computing fingerprints for {len(smiles_list):,} molecules...")
+        self.X = self._compute_fps(smiles_list)
 
         return self
 
@@ -121,9 +121,7 @@ class ECFPFeaturizer(object):
         numpy.ndarray
             Array of shape (n_molecules, n_processed_bits).
         """
-        X = self._compute_fps(smiles_list)
-
-        return X
+        return self._compute_fps(smiles_list)
 
     def save(self):
         """
@@ -145,6 +143,7 @@ class ECFPFeaturizer(object):
             json.dump(metadata, f)
 
         np.save(os.path.join(desc_path, "X.npy"), self.X)
+        logger.debug(f"Saved: {desc_path}/X.npy ({self.X.shape[0]:,} molecules)")
 
     @classmethod
     def load(cls, dir_path: str):
@@ -167,5 +166,6 @@ class ECFPFeaturizer(object):
         )
 
         obj.X = np.load(os.path.join(desc_path, "X.npy"))
+        logger.debug(f"Loaded: {desc_path}/X.npy ({obj.X.shape[0]:,} molecules)")
 
         return obj

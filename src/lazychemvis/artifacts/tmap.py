@@ -31,7 +31,7 @@ class TMAPArtifact(object):
         self.ref_coords = np.load(os.path.join(proj_path, "ref_coords.npy"))
         
         # 3. Load the Scaler
-        self.scaler = joblib.load(os.path.join(proj_path, "axis_scaler.pkl"))
+    #    self.scaler = joblib.load(os.path.join(proj_path, "axis_scaler.pkl"))
 
     def transform(self, smiles_list: List[str]):
         """
@@ -41,17 +41,15 @@ class TMAPArtifact(object):
         # Returns (n_samples, 2048) int8 array
         X = self.featurizer.transform(smiles_list)
         
-        # Step 2: Query the BallTree for the 1-Nearest Neighbor
+        # Step 2: Query the KNN index for the 1-Nearest Neighbor
         # This returns distances and indices of the closest reference molecules
         # Using Jaccard metric (Tanimoto) as defined in the Surrogate
-        _, indices = self.knn_index.query(X, k=1)
+        _, indices = self.knn_index.kneighbors(X)
         
         # Step 3: Map to coordinates
         # We flatten indices to get a 1D array of row positions in ref_coords
         indices = indices.flatten()
         X_projected = self.ref_coords[indices]
         
-        # Step 4: Scale to [-1, 1]
-        X_scaled = self.scaler.transform(X_projected)
         
-        return X_scaled
+        return X_projected

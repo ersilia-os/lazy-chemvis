@@ -22,32 +22,59 @@ class Pipeline(object):
         df = pd.DataFrame(X_reduced, columns=["pca_x", "pca_y"])
         return df
     
-    # def _tmap_step(self, smiles_list):
-    #     # This calls the Artifact we just wrote
-    #     tmap_artifact = TMAPArtifact(dir_name=self.dir_path)
-    #     X_reduced = tmap_artifact.transform(smiles_list)
-    #     return pd.DataFrame(X_reduced, columns=["tmap_x", "tmap_y"])
+    def _tmap_step(self, smiles_list):
+        tmap_artifact = TMAPArtifact(dir_name=self.dir_path)
+        X_reduced = tmap_artifact.transform(smiles_list)
+        return pd.DataFrame(X_reduced, columns=["tmap_x", "tmap_y"])
+    
+    def _tsne_step(self, smiles_list):
+        tsne_artifact = TSNEArtifact(dir_name=self.dir_path)
+        X_reduced = tsne_artifact.transform(smiles_list)
+        return pd.DataFrame(X_reduced,columns=["tsne_x", "tsne_y"])
+    
+    def _umap_step(self, smiles_list):
+        umap_artifact = UMAPArtifact(dir_name=self.dir_path)
+        X_reduced= umap_artifact.transform(smiles_list)
+        return pd.DataFrame(X_reduced, columns=['umap_x','umap_y'])
 
     def run(self):
         smiles_list = load_lib_input(self.lib_input)
 
-        # 1. PCA step
-        df = self._pca_step(smiles_list)
+        # Initialize with SMILES column
+        df_combined = pd.DataFrame({'smiles': smiles_list})
 
-        #plotting PCA
+        # 1. PCA step
+        df_pca = self._pca_step(smiles_list)
+        df_combined = pd.concat([df_combined, df_pca], axis=1)
+        
+        # Plotting PCA
         scatter_plot = ScatterPlot(projection_name="pca", dir_path=self.dir_path, output_path=self.output_path)
-        scatter_plot.plot_overlay(new_coords=df[["pca_x", "pca_y"]].to_numpy(), label="Input Molecules")
+        scatter_plot.plot_overlay(new_coords=df_pca[["pca_x", "pca_y"]].to_numpy(), label="Input Molecules")
 
         # 2. TMAP step
-        # df = self._tmap_step(smiles_list)
+        df_tmap = self._tmap_step(smiles_list)
+        df_combined = pd.concat([df_combined, df_tmap], axis=1)
 
-        #3. TSNE step
-        # df = self._tsne_step(smiles_list)   
-          
-        #4. UMAP step
-        # df = self._umap_step(smiles_list)
-        output_df =os.path.join(self.output_path, "coordinates.csv")
-    #    df.to_csv(output_df, index=False)
+        scatter_plot = ScatterPlot(projection_name="tmap", dir_path=self.dir_path, output_path=self.output_path)
+        scatter_plot.plot_overlay(new_coords=df_tmap[["tmap_x", "tmap_y"]].to_numpy(), label="Input Molecules")
+
+        # 3. TSNE step
+        df_tsne = self._tsne_step(smiles_list)
+        df_combined = pd.concat([df_combined, df_tsne], axis=1)
+        
+        scatter_plot = ScatterPlot(projection_name="tsne", dir_path=self.dir_path, output_path=self.output_path)
+        scatter_plot.plot_overlay(new_coords=df_tsne[["tsne_x", "tsne_y"]].to_numpy(), label="Input Molecules")
+
+        # 4. UMAP step
+        df_umap = self._umap_step(smiles_list)
+        df_combined = pd.concat([df_combined, df_umap], axis=1)
+        
+        scatter_plot = ScatterPlot(projection_name="umap", dir_path=self.dir_path, output_path=self.output_path)
+        scatter_plot.plot_overlay(new_coords=df_umap[["umap_x", "umap_y"]].to_numpy(), label="Input Molecules")
+
+        # Output - Save the combined dataframe
+        output_df = os.path.join(self.output_path, "coordinates.csv")
+        df_combined.to_csv(output_df, index=False)
 
 
 def main():

@@ -3,6 +3,9 @@ import torch
 import torch.nn as nn
 
 from ..projectors.pca import PCAProjector
+from ..helpers.logger import get_logger
+
+logger = get_logger(__name__)
 
 
 class PCAFixed(nn.Module):
@@ -56,9 +59,11 @@ class PCASurrogate(object):
         self.n_dim = 2
 
     def fit(self):
-        print('Fitting PCA surrogate model...')
+        logger.info("Fitting PCA surrogate model...")
         pca = PCAProjector.load(dir_path=self.dir_path)
         self.model = PCAFixed.from_sklearn(pca.reducer)
+        del pca
+        logger.success("PCA surrogate model ready.")
 
     def save(self):
         proj_path = os.path.join(self.dir_path, self.surrogate_name)
@@ -69,6 +74,7 @@ class PCASurrogate(object):
             os.remove(file_path)
 
         self.model.save(file_path)
+        logger.debug(f"Saved: {file_path}")
 
     def load(self):
         proj_path = os.path.join(self.dir_path, self.surrogate_name)
@@ -78,4 +84,5 @@ class PCASurrogate(object):
             raise FileNotFoundError(f"No PCA surrogate found at: {file_path}")
 
         self.model = PCAFixed.load(file_path)
+        logger.debug(f"Loaded: {file_path}")
         return self.model
