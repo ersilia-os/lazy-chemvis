@@ -11,10 +11,11 @@ from .plots.scatter import ScatterPlot
 
 
 class Pipeline(object):
-    def __init__(self, lib_input: str, dir_path: str, output_path: str):
+    def __init__(self, lib_input: str, dir_path: str, output_path: str, no_plots: bool = False):
         self.lib_input = lib_input
         self.dir_path = os.path.abspath(dir_path)
         self.output_path = output_path
+        self.no_plots = no_plots
 
     def _pca_step(self, smiles_list):
         pca_artifact = PCAArtifact(dir_name=self.dir_path)
@@ -47,30 +48,33 @@ class Pipeline(object):
         df_pca = self._pca_step(smiles_list)
         df_combined = pd.concat([df_combined, df_pca], axis=1)
         
-        # Plotting PCA
-        scatter_plot = ScatterPlot(projection_name="pca", dir_path=self.dir_path, output_path=self.output_path)
-        scatter_plot.plot_overlay(new_coords=df_pca[["pca_x", "pca_y"]].to_numpy(), label="Input Molecules")
+        if not self.no_plots:
+            scatter_plot = ScatterPlot(projection_name="pca", dir_path=self.dir_path, output_path=self.output_path)
+            scatter_plot.plot_overlay(new_coords=df_pca[["pca_x", "pca_y"]].to_numpy(), label="Input Molecules")
 
         # 2. TMAP step
         df_tmap = self._tmap_step(smiles_list)
         df_combined = pd.concat([df_combined, df_tmap], axis=1)
 
-        scatter_plot = ScatterPlot(projection_name="tmap", dir_path=self.dir_path, output_path=self.output_path)
-        scatter_plot.plot_overlay(new_coords=df_tmap[["tmap_x", "tmap_y"]].to_numpy(), label="Input Molecules")
+        if not self.no_plots:
+            scatter_plot = ScatterPlot(projection_name="tmap", dir_path=self.dir_path, output_path=self.output_path)
+            scatter_plot.plot_overlay(new_coords=df_tmap[["tmap_x", "tmap_y"]].to_numpy(), label="Input Molecules")
 
         # 3. TSNE step
         df_tsne = self._tsne_step(smiles_list)
         df_combined = pd.concat([df_combined, df_tsne], axis=1)
-        
-        scatter_plot = ScatterPlot(projection_name="tsne", dir_path=self.dir_path, output_path=self.output_path)
-        scatter_plot.plot_overlay(new_coords=df_tsne[["tsne_x", "tsne_y"]].to_numpy(), label="Input Molecules")
+
+        if not self.no_plots:
+            scatter_plot = ScatterPlot(projection_name="tsne", dir_path=self.dir_path, output_path=self.output_path)
+            scatter_plot.plot_overlay(new_coords=df_tsne[["tsne_x", "tsne_y"]].to_numpy(), label="Input Molecules")
 
         # 4. UMAP step
         df_umap = self._umap_step(smiles_list)
         df_combined = pd.concat([df_combined, df_umap], axis=1)
-        
-        scatter_plot = ScatterPlot(projection_name="umap", dir_path=self.dir_path, output_path=self.output_path)
-        scatter_plot.plot_overlay(new_coords=df_umap[["umap_x", "umap_y"]].to_numpy(), label="Input Molecules")
+
+        if not self.no_plots:
+            scatter_plot = ScatterPlot(projection_name="umap", dir_path=self.dir_path, output_path=self.output_path)
+            scatter_plot.plot_overlay(new_coords=df_umap[["umap_x", "umap_y"]].to_numpy(), label="Input Molecules")
 
         # Output - Save the combined dataframe
         output_df = os.path.join(self.output_path, "coordinates.csv")
@@ -96,8 +100,13 @@ def main():
         type=str,
         help="Path to save the transformed PCA coordinates (CSV format)",
     )
+    parser.add_argument(
+        "--no_plots",
+        action="store_true",
+        help="Skip overlay plots and only output the CSV.",
+    )
     args = parser.parse_args()
-    pipe = Pipeline(args.lib_input, args.dir_path, args.output_path)
+    pipe = Pipeline(args.lib_input, args.dir_path, args.output_path, args.no_plots)
     pipe.run()
 
 
