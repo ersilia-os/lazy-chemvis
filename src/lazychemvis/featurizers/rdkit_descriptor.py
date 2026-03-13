@@ -208,7 +208,7 @@ class RDKitDescriptor(object):
         np.save(numpy_path, self.X)
 
     @classmethod
-    def load(cls, dir_path: str):
+    def load(cls, dir_path: str, load_X: bool = True):
         """
         Load a previously saved RDKitDescriptor featurizer.
 
@@ -242,5 +242,6 @@ class RDKitDescriptor(object):
         obj.imputer = joblib.load(os.path.join(desc_path, "imputer.pkl"))
         obj.feature_filter = joblib.load(os.path.join(desc_path, "feature_filter.pkl"))
         obj.scaler = joblib.load(os.path.join(desc_path, "scaler.pkl"))
-        obj.X = np.load(os.path.join(desc_path, "X.npy"))
+        if load_X:
+            obj.X = np.load(os.path.join(desc_path, "X.npy"))
         return obj

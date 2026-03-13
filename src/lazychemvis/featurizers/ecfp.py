@@ -146,7 +146,7 @@ class ECFPFeaturizer(object):
         logger.debug(f"Saved: {desc_path}/X.npy ({self.X.shape[0]:,} molecules)")
 
     @classmethod
-    def load(cls, dir_path: str):
+    def load(cls, dir_path: str, load_X: bool = True):
         """
         Load a previously saved ECFPFeaturizer.
 
@@ -165,7 +165,8 @@ class ECFPFeaturizer(object):
             n_bits=metadata["n_bits"],
         )
 
-        obj.X = np.load(os.path.join(desc_path, "X.npy"))
-        logger.debug(f"Loaded: {desc_path}/X.npy ({obj.X.shape[0]:,} molecules)")
+        if load_X:
+            obj.X = np.load(os.path.join(desc_path, "X.npy"))
+            logger.debug(f"Loaded: {desc_path}/X.npy ({obj.X.shape[0]:,} molecules)")
 
         return obj

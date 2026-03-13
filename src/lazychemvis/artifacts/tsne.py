@@ -23,7 +23,7 @@ class TSNEArtifact(object):
         
         # 1. Load the ECFP featurizer 
         # Crucial: This ensures the radius and bit-length match what the surrogate learned
-        self.featurizer = ECFPFeaturizer.load(dir_path=self.dir_name)
+        self.featurizer = ECFPFeaturizer.load(dir_path=self.dir_name, load_X=False)
         
         # 2. Load the Surrogate components
         proj_path = os.path.join(self.dir_name, self.artifact_name)

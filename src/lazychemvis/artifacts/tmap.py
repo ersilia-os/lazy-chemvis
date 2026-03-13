@@ -22,7 +22,7 @@ class TMAPArtifact(object):
         self.dir_name = os.path.abspath(dir_name)
         
         # 1. Load the ECFP featurizer (logic for bit radius/bits)
-        self.featurizer = ECFPFeaturizer.load(dir_path=self.dir_name)
+        self.featurizer = ECFPFeaturizer.load(dir_path=self.dir_name, load_X=False)
         
         # 2. Load the Surrogate components
         proj_path = os.path.join(self.dir_name, self.artifact_name)

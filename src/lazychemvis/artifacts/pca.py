@@ -35,7 +35,7 @@ class PCAArtifact(object):
         """
         self.artifact_name = "pca"
         self.dir_name = os.path.abspath(dir_name)
-        self.featurizer = RDKitDescriptor.load(dir_path=self.dir_name)
+        self.featurizer = RDKitDescriptor.load(dir_path=self.dir_name, load_X=False)
         file_path = os.path.join(dir_name, self.artifact_name, "surrogate.pt")
         self.model = self._load_pca_surrogate(file_path)
         self.scaler = joblib.load(
