@@ -92,25 +92,25 @@ class Pipeline(object):
         console.print(Panel.fit("TMAP Pipeline", style="bold cyan"))
 
         logger.info("[STEP 1/4] ECFP Featurization")
-        # featurizer = ECFPFeaturizer(dir_path=self.dir_path)
-        # featurizer.fit(smiles_list)
-        # featurizer.save()
-        # del featurizer
-        # gc.collect()
+        featurizer = ECFPFeaturizer(dir_path=self.dir_path)
+        featurizer.fit(smiles_list)
+        featurizer.save()
+        del featurizer
+        gc.collect()
 
-        # logger.info("[STEP 2/4] TMAP Projection")
-        # tmap_proj = TMAPProjector(
-        #     dir_path=self.dir_path,
-        #     low_memory=self.low_memory,
-        #     n_permutations=64 if self.low_memory else 128,
-        #     batch_size=5000 if self.low_memory else 10000
-        # )
-        # tmap_proj.fit(self.tmap_env)
+        logger.info("[STEP 2/4] TMAP Projection")
+        tmap_proj = TMAPProjector(
+            dir_path=self.dir_path,
+            low_memory=self.low_memory,
+            n_permutations=64 if self.low_memory else 128,
+            batch_size=5000 if self.low_memory else 10000
+        )
+        tmap_proj.fit(self.tmap_env)
 
-        # logger.info("[STEP 3/4] Plotting")
-        # from .plots.scatter import ScatterPlot
-        # scatter = ScatterPlot(projection_name="tmap", dir_path=self.dir_path)
-        # scatter.plot_reference()
+        logger.info("[STEP 3/4] Plotting")
+        from .plots.scatter import ScatterPlot
+        scatter = ScatterPlot(projection_name="tmap", dir_path=self.dir_path)
+        scatter.plot_reference()
 
         logger.info("[STEP 4/4] TMAP Surrogate Training")
         from .surrogates.tmap import TMAPSurrogate
@@ -216,10 +216,10 @@ class Pipeline(object):
             )
 
         # Run pipeline steps
-        # self._pca_step(smiles_list)
+        self._pca_step(smiles_list)
         self._tmap_step(smiles_list)
-        # self._tsne_step(smiles_list)
-        # self._umap_step(smiles_list)
+        self._tsne_step(smiles_list)
+        self._umap_step(smiles_list)
 
         logger.success("Full pipeline complete.")
 

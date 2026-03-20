@@ -161,8 +161,8 @@ class ECFPFeaturizer(object):
 
         obj = cls(
             dir_path,
-            radius=metadata["radius"],
-            n_bits=metadata["n_bits"],
+            radius=metadata.get("radius", 2),
+            n_bits=metadata.get("n_bits", 2048),
         )
 
         if load_X:
