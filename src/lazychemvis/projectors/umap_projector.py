@@ -35,7 +35,7 @@ class UMAPProjector(object):
     """
 
     def __init__(self, dir_path: str, n_neighbors: int = 150, min_dist: float = 0.4,
-                 metric: str = 'cosine', low_memory: bool = True):
+                 metric: str = 'cosine', low_memory: bool = True, verbose: bool = False):
         """
         Create a UMAPProjector.
 
@@ -51,6 +51,8 @@ class UMAPProjector(object):
             The metric to use to compute distances in high dimensional space.
         low_memory : bool, default=True
             Use memory-efficient implementation (recommended for >1M molecules).
+        verbose : bool, default=False
+            If True, print UMAP iteration progress to stdout.
         """
         self.projector_name = "umap"
         if not os.path.exists(dir_path):
@@ -61,6 +63,7 @@ class UMAPProjector(object):
         self.min_dist = min_dist
         self.metric = metric
         self.low_memory = low_memory
+        self.verbose = verbose
 
         self.feature_scaler = None
         self.reducer = None
@@ -74,7 +77,8 @@ class UMAPProjector(object):
         """
         Fit UMAP on the stored CLAMP descriptor matrix with performance tracking.
         """
-        console.print(Panel.fit("Fitting UMAP Projector", style="bold cyan"))
+        if self.verbose:
+            console.print(Panel.fit("Fitting UMAP Projector", style="bold cyan"))
 
         total_start = time.time()
 
@@ -137,7 +141,7 @@ class UMAPProjector(object):
             low_memory=self.low_memory,
             metric=self.metric,
             random_state=42,
-            verbose=True
+            verbose=self.verbose
         )
 
         X_embedded = reducer.fit_transform(X_scaled)

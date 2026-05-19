@@ -12,7 +12,7 @@ numba import chain (and vice-versa).
 import gc
 from rich.panel import Panel
 
-from .helpers.logger import get_logger, console
+from .helpers.logger import get_logger, console, spinner, echo
 from .helpers.libraries import load_lib_input
 
 logger = get_logger(__name__)
@@ -24,7 +24,7 @@ class Pipeline(object):
     """
 
     def __init__(self, lib_input: str, dir_path: str, tmap_env: str,
-                 use_cache: bool = False, low_memory: bool = False):
+                 use_cache: bool = False, low_memory: bool = False, verbose: bool = False):
         """
         Initialize the pipeline.
 
@@ -40,12 +40,15 @@ class Pipeline(object):
             If True, load precomputed descriptors from disk instead of recomputing.
         low_memory : bool, default=False
             If True, use memory-efficient settings for large datasets (>1M molecules).
+        verbose : bool, default=False
+            If True, print iteration progress from t-SNE and UMAP to stdout.
         """
         self.lib_input = lib_input
         self.dir_path = dir_path
         self.tmap_env = tmap_env
         self.use_cache = use_cache
         self.low_memory = low_memory
+        self.verbose = verbose
 
     def _pca_step(self, smiles_list):
         """Execute the descriptor → PCA → surrogate → plot sequence."""
@@ -56,110 +59,119 @@ class Pipeline(object):
 
         console.print(Panel.fit("PCA Pipeline", style="bold cyan"))
 
-        logger.info("[STEP 1/4] RDKit Featurization")
-        featurizer = RDKitDescriptor(dir_path=self.dir_path)
-        featurizer.fit(smiles_list)
-        if not self.use_cache:
+        def featurize():
+            featurizer = RDKitDescriptor(dir_path=self.dir_path)
+            featurizer.fit(smiles_list, use_cache=self.use_cache)
             featurizer.save()
-        del featurizer
-        gc.collect()
+            del featurizer
+            gc.collect()
 
-        logger.info("[STEP 2/4] PCA Projection")
-        pca_proj = PCAProjector(dir_path=self.dir_path)
-        pca_proj.fit()
-        pca_proj.save()
-        del pca_proj
-        gc.collect()
+        def project():
+            pca_proj = PCAProjector(dir_path=self.dir_path)
+            pca_proj.fit()
+            pca_proj.save()
+            del pca_proj
+            gc.collect()
 
-        logger.info("[STEP 3/4] Plotting")
-        scatter = ScatterPlot(projection_name="pca", dir_path=self.dir_path)
-        scatter.plot_reference()
+        def plot():
+            scatter = ScatterPlot(projection_name="pca", dir_path=self.dir_path)
+            scatter.plot_reference()
 
-        logger.info("[STEP 4/4] PCA Surrogate Training")
-        pca_surrogate = PCASurrogate(dir_path=self.dir_path)
-        pca_surrogate.fit()
-        pca_surrogate.save()
-        del pca_surrogate
-        gc.collect()
+        def train_surrogate():
+            pca_surrogate = PCASurrogate(dir_path=self.dir_path)
+            pca_surrogate.fit()
+            pca_surrogate.save()
+            del pca_surrogate
+            gc.collect()
 
-        logger.success("PCA pipeline complete.")
+        spinner("RDKit Featurization", featurize)
+        spinner("PCA Projection", project)
+        spinner("Plotting", plot)
+        spinner("PCA Surrogate Training", train_surrogate)
+        echo("PCA pipeline complete")
 
     def _tmap_step(self, smiles_list):
         """Execute the ECFP → TMAP → plot sequence with optional low-memory mode."""
         from .featurizers.ecfp import ECFPFeaturizer
         from .projectors.tmap_projector import TMAPProjector
+        from .plots.scatter import ScatterPlot
+        from .surrogates.tmap import TMAPSurrogate
 
         console.print(Panel.fit("TMAP Pipeline", style="bold cyan"))
 
-        logger.info("[STEP 1/4] ECFP Featurization")
-        featurizer = ECFPFeaturizer(dir_path=self.dir_path)
-        featurizer.fit(smiles_list)
-        featurizer.save()
-        del featurizer
-        gc.collect()
+        def featurize():
+            featurizer = ECFPFeaturizer(dir_path=self.dir_path)
+            featurizer.fit(smiles_list, use_cache=self.use_cache)
+            featurizer.save()
+            del featurizer
+            gc.collect()
 
-        logger.info("[STEP 2/4] TMAP Projection")
-        tmap_proj = TMAPProjector(
-            dir_path=self.dir_path,
-            low_memory=self.low_memory,
-            n_permutations=64 if self.low_memory else 128,
-            batch_size=5000 if self.low_memory else 10000
-        )
-        tmap_proj.fit(self.tmap_env)
+        def project():
+            tmap_proj = TMAPProjector(
+                dir_path=self.dir_path,
+                low_memory=self.low_memory,
+                n_permutations=64 if self.low_memory else 128,
+                batch_size=5000 if self.low_memory else 10000
+            )
+            tmap_proj.fit(self.tmap_env)
 
-        logger.info("[STEP 3/4] Plotting")
-        from .plots.scatter import ScatterPlot
-        scatter = ScatterPlot(projection_name="tmap", dir_path=self.dir_path)
-        scatter.plot_reference()
+        def plot():
+            scatter = ScatterPlot(projection_name="tmap", dir_path=self.dir_path)
+            scatter.plot_reference()
 
-        logger.info("[STEP 4/4] TMAP Surrogate Training")
-        from .surrogates.tmap import TMAPSurrogate
-        tmap_surrogate = TMAPSurrogate(dir_path=self.dir_path)
-        tmap_surrogate.fit()
-        tmap_surrogate.save()
+        def train_surrogate():
+            tmap_surrogate = TMAPSurrogate(dir_path=self.dir_path)
+            tmap_surrogate.fit(smiles_list)
+            tmap_surrogate.save()
 
- 
-
-        logger.success("TMAP pipeline complete.")
+        spinner("ECFP Featurization", featurize)
+        spinner("TMAP Projection", project)
+        spinner("Plotting", plot)
+        spinner("TMAP Surrogate Training", train_surrogate)
+        echo("TMAP pipeline complete")
 
     def _tsne_step(self, smiles_list):
         """Execute the CheMeleon → t-SNE → surrogate → plot sequence with memory management."""
         from .featurizers.chemeleon import CheMeleonFeaturizer
         from .projectors.tsne_projector import TSNEProjector
         from .surrogates.tsne import TSNESurrogate
+        from .plots.scatter import ScatterPlot
 
         console.print(Panel.fit("t-SNE Pipeline", style="bold cyan"))
 
-        logger.info("[STEP 1/4] CheMeleon Featurization")
-        featurizer = CheMeleonFeaturizer(dir_path=self.dir_path)
-        featurizer.fit(smiles_list=smiles_list)
-        featurizer.save()
-        if hasattr(featurizer, 'cleanup'):
-            featurizer.cleanup()
-        del featurizer
-        gc.collect()
+        def featurize():
+            featurizer = CheMeleonFeaturizer(dir_path=self.dir_path)
+            featurizer.fit(smiles_list=smiles_list)
+            featurizer.save()
+            if hasattr(featurizer, 'cleanup'):
+                featurizer.cleanup()
+            del featurizer
+            gc.collect()
 
-        logger.info("[STEP 2/4] t-SNE Projection")
-        tsne_proj = TSNEProjector(dir_path=self.dir_path)
-        tsne_proj.fit()
-        tsne_proj.save()
-        tsne_proj.cleanup()
-        del tsne_proj
-        gc.collect()
+        def project():
+            tsne_proj = TSNEProjector(dir_path=self.dir_path, verbose=self.verbose)
+            tsne_proj.fit()
+            tsne_proj.save()
+            tsne_proj.cleanup()
+            del tsne_proj
+            gc.collect()
 
-        logger.info("[STEP 3/4] Plotting")
-        from .plots.scatter import ScatterPlot
-        scatter = ScatterPlot(projection_name="tsne", dir_path=self.dir_path)
-        scatter.plot_reference()
+        def plot():
+            scatter = ScatterPlot(projection_name="tsne", dir_path=self.dir_path)
+            scatter.plot_reference()
 
-        logger.info("[STEP 4/4] t-SNE Surrogate Training")
-        tsne_surrogate = TSNESurrogate(dir_path=self.dir_path)
-        tsne_surrogate.fit()
-        tsne_surrogate.save()
-        del tsne_surrogate
-        gc.collect()
+        def train_surrogate():
+            tsne_surrogate = TSNESurrogate(dir_path=self.dir_path)
+            tsne_surrogate.fit()
+            tsne_surrogate.save()
+            del tsne_surrogate
+            gc.collect()
 
-        logger.success("t-SNE pipeline complete.")
+        spinner("CheMeleon Featurization", featurize)
+        spinner("t-SNE Projection", project)
+        spinner("Plotting", plot)
+        spinner("t-SNE Surrogate Training", train_surrogate)
+        echo("t-SNE pipeline complete")
 
     def _umap_step(self, smiles_list):
         """Execute the CLAMP → UMAP → surrogate → plot sequence with memory management."""
@@ -170,36 +182,40 @@ class Pipeline(object):
 
         console.print(Panel.fit("UMAP Pipeline", style="bold cyan"))
 
-        logger.info("[STEP 1/4] CLAMP Featurization")
-        featurizer = CLAMPFeaturizer(dir_path=self.dir_path)
-        featurizer.fit(smiles_list=smiles_list)
-        featurizer.save()
-        if hasattr(featurizer, 'cleanup'):
-            featurizer.cleanup()
-        del featurizer
-        gc.collect()
+        def featurize():
+            featurizer = CLAMPFeaturizer(dir_path=self.dir_path)
+            featurizer.fit(smiles_list=smiles_list)
+            featurizer.save()
+            if hasattr(featurizer, 'cleanup'):
+                featurizer.cleanup()
+            del featurizer
+            gc.collect()
 
-        logger.info("[STEP 2/4] UMAP Projection")
-        umap_proj = UMAPProjector(dir_path=self.dir_path)
-        umap_proj.fit()
-        umap_proj.save()
-        if hasattr(umap_proj, 'cleanup'):
-            umap_proj.cleanup()
-        del umap_proj
-        gc.collect()
+        def project():
+            umap_proj = UMAPProjector(dir_path=self.dir_path, verbose=self.verbose)
+            umap_proj.fit()
+            umap_proj.save()
+            if hasattr(umap_proj, 'cleanup'):
+                umap_proj.cleanup()
+            del umap_proj
+            gc.collect()
 
-        logger.info("[STEP 3/4] Plotting")
-        scatter = ScatterPlot(projection_name="umap", dir_path=self.dir_path)
-        scatter.plot_reference()
+        def plot():
+            scatter = ScatterPlot(projection_name="umap", dir_path=self.dir_path)
+            scatter.plot_reference()
 
-        logger.info("[STEP 4/4] UMAP Surrogate Training")
-        umap_surrogate = UMAPSurrogate(dir_path=self.dir_path)
-        umap_surrogate.fit()
-        umap_surrogate.save()
-        del umap_surrogate
-        gc.collect()
+        def train_surrogate():
+            umap_surrogate = UMAPSurrogate(dir_path=self.dir_path)
+            umap_surrogate.fit()
+            umap_surrogate.save()
+            del umap_surrogate
+            gc.collect()
 
-        logger.success("UMAP pipeline complete.")
+        spinner("CLAMP Featurization", featurize)
+        spinner("UMAP Projection", project)
+        spinner("Plotting", plot)
+        spinner("UMAP Surrogate Training", train_surrogate)
+        echo("UMAP pipeline complete")
 
     def run(self):
         """Run the full pipeline with memory management."""
@@ -221,7 +237,7 @@ class Pipeline(object):
         self._tsne_step(smiles_list)
         self._umap_step(smiles_list)
 
-        logger.success("Full pipeline complete.")
+        echo("Full pipeline complete")
 
 
 def main():
@@ -239,6 +255,8 @@ def main():
                         help='Load precomputed descriptors instead of recomputing them.')
     parser.add_argument("--low_memory", action='store_true',
                         help='Use memory-efficient mode for large datasets (>1M molecules).')
+    parser.add_argument("--verbose", action='store_true',
+                        help='Print iteration-level progress from t-SNE and UMAP.')
     args = parser.parse_args()
 
     pipe = Pipeline(
@@ -246,7 +264,8 @@ def main():
         args.dir_path,
         args.tmap_env,
         args.use_cache,
-        args.low_memory
+        args.low_memory,
+        args.verbose
     )
     pipe.run()
 

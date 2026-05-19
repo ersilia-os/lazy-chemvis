@@ -3,7 +3,6 @@ import json
 import shutil
 import joblib
 import numpy as np
-from tqdm import tqdm
 
 from rdkit import Chem
 from rdkit.ML.Descriptors import MoleculeDescriptors
@@ -64,8 +63,8 @@ class RDKitDescriptor(object):
         self.features = [n.lower() for n in descriptor_names]
         self.dir_path = os.path.abspath(dir_path)
 
-    def fit(self, smiles_list):
-    
+    def fit(self, smiles_list, use_cache=True):
+
         """
         Fit the descriptor preprocessing pipeline on a list of SMILES.
 
@@ -88,8 +87,8 @@ class RDKitDescriptor(object):
         """
         fp_path = os.path.join(self.dir_path,self.featurizer_name, "X.npy")
 
-        # 1. Skip computation if fingerprints are already on disk
-        if os.path.exists(fp_path):
+        # 1. Skip computation if fingerprints are already on disk and caching is enabled
+        if use_cache and os.path.exists(fp_path):
             logger.info(f"Found existing descriptors at {fp_path}. Loading...")
             X = np.load(fp_path)
             self.X = X
@@ -102,7 +101,7 @@ class RDKitDescriptor(object):
         feature_filter = VarianceThreshold(threshold=0.0)
         scaler = RobustScaler()
         R = []
-        for smiles in tqdm(smiles_list, desc="Fitting RDKit descriptors"):
+        for smiles in smiles_list:
             mol = Chem.MolFromSmiles(smiles)
             if mol is None:
                 continue
@@ -152,7 +151,7 @@ class RDKitDescriptor(object):
         """
         R = []
         n_desc = len(self.features)
-        for smiles in tqdm(smiles_list, desc="Featurizing with RDKit descriptors"):
+        for smiles in smiles_list:
             try:
                 mol = Chem.MolFromSmiles(smiles)
                 if mol is None:

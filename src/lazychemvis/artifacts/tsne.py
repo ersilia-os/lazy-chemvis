@@ -32,17 +32,25 @@ class TSNEArtifact(object):
         self.model = joblib.load(os.path.join(proj_path, "xgb_model.joblib"))
         
 
-    def transform(self, smiles_list: List[str]):
+    def transform(self, smiles_list: List[str], X_ecfp=None):
         """
         Project new SMILES into the t-SNE landscape using the XGBoost surrogate.
+
+        Parameters
+        ----------
+        smiles_list : List[str]
+            Molecules to project.
+        X_ecfp : np.ndarray, optional
+            Precomputed ECFP fingerprint matrix (n_samples, n_bits). If provided,
+            featurization is skipped — pass this when sharing fingerprints across
+            multiple artifact steps to avoid recomputation.
         """
-        # Step 1: Compute binary fingerprints locally
+        # Step 1: Compute binary fingerprints locally (skipped if precomputed)
         # Result shape: (n_samples, n_bits)
-        X_ecfp = self.featurizer.transform(smiles_list)
-        
+        if X_ecfp is None:
+            X_ecfp = self.featurizer.transform(smiles_list)
+
         # Step 2: Predict coordinates using the XGBoost model
         # This replaces the need for PCA and openTSNE.transform()
         # Result shape: (n_samples, 2)
-        X_projected = self.model.predict(X_ecfp)
-        
-        return X_projected
+        return self.model.predict(X_ecfp)

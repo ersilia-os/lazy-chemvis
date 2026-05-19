@@ -2,6 +2,7 @@ import os
 import gc
 import json
 import shutil
+import time
 import pandas as pd
 import numpy as np
 from tqdm import tqdm
@@ -57,14 +58,22 @@ class CheMeleonFeaturizer(object):
 
             current_batch_smiles = smiles_list[i: i + batch_size]
 
-            try:
-                df_batch = self.model.run(current_batch_smiles)
-                numeric_df = df_batch.select_dtypes(include=[np.number])
-                X_batch = numeric_df.to_numpy(dtype=np.float32)
-                np.save(batch_file, X_batch)
-                del df_batch, numeric_df, X_batch
-            except Exception as e:
-                logger.error(f"Error at batch {batch_idx}: {e}")
+            for attempt in range(3):
+                try:
+                    df_batch = self.model.run(current_batch_smiles)
+                    numeric_df = df_batch.select_dtypes(include=[np.number])
+                    X_batch = numeric_df.to_numpy(dtype=np.float32)
+                    np.save(batch_file, X_batch)
+                    del df_batch, numeric_df, X_batch
+                    break
+                except Exception as e:
+                    if "Redis is loading" in str(e) and attempt < 2:
+                        wait = 5 * (attempt + 1)
+                        logger.warning(f"Redis not ready, retrying in {wait}s... (attempt {attempt + 1}/3)")
+                        time.sleep(wait)
+                    else:
+                        logger.error(f"Error at batch {batch_idx}: {e}")
+                        break
 
     def fit(self, smiles_list):
         """Fit the featurizer by computing descriptors for the reference set."""

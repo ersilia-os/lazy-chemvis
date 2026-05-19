@@ -145,6 +145,8 @@ class TSNESurrogate(object):
 
     def _run_optuna_study(self, X: np.ndarray, y: np.ndarray) -> dict:
         """Run Optuna hyperparameter search and return the best params dict."""
+        n_trials = 30
+        optuna.logging.set_verbosity(optuna.logging.WARNING)
 
         def objective(trial):
             param = {
@@ -175,7 +177,26 @@ class TSNESurrogate(object):
         study = optuna.create_study(
             direction="minimize", pruner=optuna.pruners.MedianPruner()
         )
-        study.optimize(objective, n_trials=30, show_progress_bar=True)
+
+        with Progress(
+            SpinnerColumn(),
+            TextColumn("[progress.description]{task.description}"),
+            BarColumn(),
+            TextColumn("[bold yellow]{task.completed}/{task.total} trials"),
+            TimeElapsedColumn(),
+            console=console,
+        ) as progress:
+            task = progress.add_task("Optimising hyperparameters...", total=n_trials)
+
+            def _callback(study, trial):
+                best = study.best_value
+                progress.update(
+                    task,
+                    advance=1,
+                    description=f"[yellow]Trial {trial.number + 1}/{n_trials} — best RMSE: {best:.4f}",
+                )
+
+            study.optimize(objective, n_trials=n_trials, callbacks=[_callback], show_progress_bar=False)
 
         logger.success(f"Optimisation complete — best RMSE: {study.best_value:.4f}")
 
