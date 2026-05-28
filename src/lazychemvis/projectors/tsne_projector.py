@@ -18,13 +18,14 @@ class TSNEProjector(object):
     """
     Perform t-SNE projection using openTSNE for high-performance embedding.
     """
-    def __init__(self, dir_path: str, perplexity: int = 100):
+    def __init__(self, dir_path: str, perplexity: int = 100, verbose: bool = False):
         self.projector_name = "tsne"
         self.dir_path = os.path.abspath(dir_path)
         if not os.path.exists(self.dir_path):
             os.makedirs(self.dir_path)
 
         self.perplexity = perplexity
+        self.verbose = verbose
 
         # Internal State
         self.pca = None
@@ -34,7 +35,8 @@ class TSNEProjector(object):
 
     def fit(self, X=None):
         """Fit PCA and openTSNE on the descriptor matrix."""
-        console.print(Panel.fit("Fitting t-SNE Projector", style="bold cyan"))
+        if self.verbose:
+            console.print(Panel.fit("Fitting t-SNE Projector", style="bold cyan"))
 
         # Load data if not provided
         if X is None:
@@ -75,7 +77,7 @@ class TSNEProjector(object):
             initialization="pca",
             n_jobs=-1,
             random_state=42,
-            verbose=True,
+            verbose=self.verbose,
             negative_gradient_method="fft"
         )
 

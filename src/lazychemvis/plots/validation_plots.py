@@ -1,4 +1,6 @@
 import os
+import matplotlib
+matplotlib.use("Agg")  # non-interactive backend — prevents Tk thread conflicts
 import numpy as np
 import matplotlib.pyplot as plt
 from scipy.stats import pearsonr

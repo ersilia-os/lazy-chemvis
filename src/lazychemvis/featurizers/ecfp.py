@@ -10,7 +10,6 @@ import os
 import json
 import shutil
 import numpy as np
-from tqdm import tqdm
 
 from rdkit import Chem
 from rdkit.Chem import AllChem
@@ -64,14 +63,14 @@ class ECFPFeaturizer(object):
 
     def _compute_fps(self, smiles_list):
         X = np.zeros((len(smiles_list), self.n_bits), dtype="int8")
-        for i, smi in tqdm(enumerate(smiles_list), desc="Featurizing with ECFP"):
+        for i, smi in enumerate(smiles_list):
             fp = self._compute_fp(smi)
             if fp is None:
                 continue
             X[i, :] = fp
         return X
 
-    def fit(self, smiles_list):
+    def fit(self, smiles_list, use_cache=True):
         """
         Fit the preprocessing pipeline on a list of SMILES.
 
@@ -93,8 +92,8 @@ class ECFPFeaturizer(object):
         """
         fp_path = os.path.join(self.dir_path, self.featurizer_name, "X.npy")
 
-        # Skip computation if fingerprints are already on disk
-        if os.path.exists(fp_path):
+        # Skip computation if fingerprints are already on disk and caching is enabled
+        if use_cache and os.path.exists(fp_path):
             logger.info(f"Found existing fingerprints at {fp_path}. Loading...")
             self.X = np.load(fp_path)
             return self  # early return — do NOT fall through to _compute_fps

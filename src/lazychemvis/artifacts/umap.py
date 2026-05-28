@@ -31,17 +31,22 @@ class UMAPArtifact(object):
         self.model = joblib.load(os.path.join(proj_path, "xgb_model.joblib"))
         
 
-    def transform(self, smiles_list: List[str]):
+    def transform(self, smiles_list: List[str], X_ecfp=None):
         """
         Project new SMILES into the UMAP landscape using the XGBoost surrogate.
+
+        Parameters
+        ----------
+        smiles_list : List[str]
+            Molecules to project.
+        X_ecfp : np.ndarray, optional
+            Precomputed ECFP fingerprint matrix (n_samples, n_bits). If provided,
+            featurization is skipped — pass this when sharing fingerprints across
+            multiple artifact steps to avoid recomputation.
         """
-        # Step 1: Compute binary fingerprints 
+        # Step 1: Compute binary fingerprints (skipped if precomputed)
+        if X_ecfp is None:
+            X_ecfp = self.featurizer.transform(smiles_list)
 
-        X = self.featurizer.transform(smiles_list)
-        
         # Step 2: Predict coordinates using the XGBoost model
-
-        X_projected = self.model.predict(X)
-    
-        
-        return X_projected
+        return self.model.predict(X_ecfp)
