@@ -11,8 +11,7 @@ from rdkit import Chem
 from rdkit.Chem import AllChem
 from rdkit import RDLogger
 
-from ersilia.api import Model
-
+from ..helpers.ersilia_model import serve_model
 from ..helpers.logger import get_logger
 
 RDLogger.DisableLog("rdApp.*")
@@ -33,11 +32,10 @@ class CheMeleonFeaturizer(object):
 
     @property
     def model(self):
-        """Lazy loader for Ersilia model."""
+        """Lazy loader for Ersilia model. Fetches the model if it is missing."""
         if self._model_instance is None:
             logger.info(f"Initializing and serving model: {self._model_id}")
-            self._model_instance = Model(model_id=self._model_id)
-            self._model_instance.serve()
+            self._model_instance = serve_model(self._model_id)
         return self._model_instance
 
     def _compute_fps(self, smiles_list):
@@ -48,6 +46,15 @@ class CheMeleonFeaturizer(object):
         desc_path = os.path.join(self.dir_path, self.featurizer_name)
         temp_dir = os.path.join(desc_path, "tmp_batches")
         os.makedirs(temp_dir, exist_ok=True)
+
+        # Fetch and serve up front, but only if there is anything left to
+        # compute: a missing model or a stopped Docker daemon should surface as
+        # itself rather than as three retried "batch failed" warnings.
+        if any(
+            not os.path.exists(os.path.join(temp_dir, f"batch_{i // batch_size}.npy"))
+            for i in range(0, total_smiles, batch_size)
+        ):
+            _ = self.model
 
         for i in tqdm(range(0, total_smiles, batch_size), desc="Processing Batches"):
             batch_idx = i // batch_size
