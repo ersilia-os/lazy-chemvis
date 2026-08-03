@@ -41,6 +41,7 @@ class UMAPSurrogate(object):
         evaluate: bool = True,
         cv_folds: int = 5,
         optimize: bool = True,
+        random_state: int = 42,
     ):
         """
         Parameters
@@ -54,6 +55,10 @@ class UMAPSurrogate(object):
             Set to 0 to skip validation (not recommended for production).
         optimize : bool, default=True
             If True, run Optuna hyperparameter search before training.
+        random_state : int, default=42
+            Seed used for the Optuna sampler, the Optuna subsampling draw, the
+            cross-validation splits and XGBoost itself, so that reported metrics
+            are reproducible across runs.
         """
         self.surrogate_name = "umap_surrogate"
         self.dir_path = os.path.abspath(dir_path)
@@ -62,6 +67,7 @@ class UMAPSurrogate(object):
         self.cv_results = None
         self.metrics = None
         self.optimize = optimize
+        self.random_state = random_state
 
         self.best_params = {
             "n_estimators": 300,
@@ -70,7 +76,7 @@ class UMAPSurrogate(object):
             "tree_method": "hist",
             "device": "cpu",
             "n_jobs": -1,
-            "random_state": 42,
+            "random_state": random_state,
         }
 
     # ------------------------------------------------------------------
@@ -119,7 +125,8 @@ class UMAPSurrogate(object):
             if X.shape[0] > 100_000:
                 n_optuna = min(400_000, X.shape[0])
                 logger.info(f"Large dataset detected — subsampling {n_optuna:,} molecules for Optuna.")
-                indices = np.random.choice(X.shape[0], n_optuna, replace=False)
+                rng = np.random.default_rng(self.random_state)
+                indices = rng.choice(X.shape[0], n_optuna, replace=False)
                 self.best_params = self._run_optuna_study(X[indices], y_coords[indices])
                 del indices
             else:
@@ -168,9 +175,9 @@ class UMAPSurrogate(object):
                 "tree_method": "hist",
                 "device": "cpu",
                 "n_jobs": -1,
-                "random_state": 42,
+                "random_state": self.random_state,
             }
-            cv = KFold(n_splits=3, shuffle=True, random_state=42)
+            cv = KFold(n_splits=3, shuffle=True, random_state=self.random_state)
             rmses = []
             for fold_idx, (t_idx, v_idx) in enumerate(cv.split(X)):
                 model = MultiOutputRegressor(XGBRegressor(**param))
@@ -184,8 +191,13 @@ class UMAPSurrogate(object):
                     raise optuna.exceptions.TrialPruned()
             return np.mean(rmses)
 
+        # The sampler must be seeded explicitly: an unseeded TPESampler makes the
+        # selected hyperparameters — and therefore every reported metric — differ
+        # from run to run.
         study = optuna.create_study(
-            direction="minimize", pruner=optuna.pruners.MedianPruner()
+            direction="minimize",
+            pruner=optuna.pruners.MedianPruner(),
+            sampler=optuna.samplers.TPESampler(seed=self.random_state),
         )
 
         with Progress(
@@ -214,7 +226,7 @@ class UMAPSurrogate(object):
             "tree_method": "hist",
             "device": "cpu",
             "n_jobs": -1,
-            "random_state": 42,
+            "random_state": self.random_state,
         }
         final_params.update(study.best_params)
 
@@ -234,7 +246,7 @@ class UMAPSurrogate(object):
         logger.info(f"Saving validation artifacts to: {val_dir}")
 
         r2_list, rmse_list, mae_list, euc_list = [], [], [], []
-        kfold = KFold(n_splits=self.cv_folds, shuffle=True, random_state=42)
+        kfold = KFold(n_splits=self.cv_folds, shuffle=True, random_state=self.random_state)
 
         with Progress(
             SpinnerColumn(),

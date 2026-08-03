@@ -14,6 +14,7 @@ from rich.panel import Panel
 
 from .helpers.logger import get_logger, console, spinner, echo
 from .helpers.libraries import load_lib_input
+from .helpers.validation import validate_smiles
 
 logger = get_logger(__name__)
 
@@ -31,7 +32,7 @@ class Pipeline(object):
         Parameters
         ----------
         lib_input : str
-            Path to a SMILES file or name of a built-in dataset.
+            Path to a CSV file with a header row and SMILES in the first column.
         dir_path : str
             Directory in which all trained models and outputs will be saved.
         tmap_env : str
@@ -219,7 +220,18 @@ class Pipeline(object):
 
     def run(self):
         """Run the full pipeline with memory management."""
+        # Fail fast on a bad TMAP environment: the TMAP step runs after PCA and
+        # ECFP featurization, so without this check a mistyped --tmap_env is only
+        # discovered hours into a large fit.
+        from .projectors.tmap_projector import verify_tmap_env
+        verify_tmap_env(self.tmap_env)
+
         smiles_list = load_lib_input(self.lib_input)
+
+        # Validate once, up front: every featurizer downstream must produce a
+        # matrix with exactly these rows, in this order, for the projectors and
+        # surrogates to index across them safely.
+        smiles_list, _ = validate_smiles(smiles_list)
 
         n_mols = len(smiles_list)
         console.print(Panel.fit(f"Pipeline Starting — {n_mols:,} molecules", style="bold cyan"))
@@ -245,12 +257,14 @@ def main():
     import argparse
 
     parser = argparse.ArgumentParser()
-    parser.add_argument("--lib_input", type=str,
-                        help="Path to input library (SMILES format) or name of built-in dataset")
-    parser.add_argument("--dir_path", type=str,
+    parser.add_argument("--lib_input", type=str, required=True,
+                        help="Path to the input library: a CSV file with a header row and "
+                             "SMILES in the first column")
+    parser.add_argument("--dir_path", type=str, required=True,
                         help="Directory to save trained featurizers and projectors")
-    parser.add_argument("--tmap_env", type=str, default="tmap-env",
-                        help="Path to the TMAP conda environment")
+    parser.add_argument("--tmap_env", type=str, required=True,
+                        help="Path to the TMAP conda environment directory "
+                             "(not the environment name); see 'conda env list'")
     parser.add_argument("--use_cache", action='store_true',
                         help='Load precomputed descriptors instead of recomputing them.')
     parser.add_argument("--low_memory", action='store_true',

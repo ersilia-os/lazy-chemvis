@@ -63,17 +63,36 @@ class CheMeleonFeaturizer(object):
                     df_batch = self.model.run(current_batch_smiles)
                     numeric_df = df_batch.select_dtypes(include=[np.number])
                     X_batch = numeric_df.to_numpy(dtype=np.float32)
+
+                    if X_batch.shape[0] != len(current_batch_smiles):
+                        raise RuntimeError(
+                            f"model returned {X_batch.shape[0]} rows for "
+                            f"{len(current_batch_smiles)} molecules"
+                        )
+
                     np.save(batch_file, X_batch)
                     del df_batch, numeric_df, X_batch
                     break
                 except Exception as e:
-                    if "Redis is loading" in str(e) and attempt < 2:
+                    if attempt < 2:
                         wait = 5 * (attempt + 1)
-                        logger.warning(f"Redis not ready, retrying in {wait}s... (attempt {attempt + 1}/3)")
+                        logger.warning(
+                            f"Batch {batch_idx} failed ({e}); retrying in {wait}s "
+                            f"(attempt {attempt + 1}/3)."
+                        )
                         time.sleep(wait)
-                    else:
-                        logger.error(f"Error at batch {batch_idx}: {e}")
-                        break
+                        continue
+                    # Fatal: skipping the batch would leave X.npy short and
+                    # silently misaligned with the other featurizers, surfacing
+                    # much later as an unexplained dimension mismatch.
+                    logger.error(f"Error at batch {batch_idx}: {e}")
+                    raise RuntimeError(
+                        f"CheMeleon featurization failed at batch {batch_idx} "
+                        f"(molecules {i:,}–{i + len(current_batch_smiles):,}) "
+                        f"after 3 attempts: {e}\n"
+                        "Successfully computed batches are cached on disk, so "
+                        "re-running resumes from this point."
+                    ) from e
 
     def fit(self, smiles_list):
         """Fit the featurizer by computing descriptors for the reference set."""
@@ -112,6 +131,13 @@ class CheMeleonFeaturizer(object):
             row += n
             del batch
             gc.collect()
+
+        if n_total != len(smiles_list):
+            raise RuntimeError(
+                f"CheMeleon produced {n_total:,} rows for {len(smiles_list):,} input "
+                f"molecules. The reference matrices must stay row-aligned; delete "
+                f"{temp_dir} and re-run."
+            )
 
         logger.success(f"Merge complete: {n_total:,} molecules, {n_feat} features.")
 

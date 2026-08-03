@@ -10,27 +10,42 @@ readme = "README.md"
 license = {file = "LICENSE"}
 authors = [
   {name="Marina Miñarro", email="marina@ersilia.io"},
-  {name="Miquel Duran-Frigola", email="miquel@ersilia.io"}
+  {name="Miquel Duran-Frigola", email="miquel@ersilia.io"},
+  {name="Ersilia Open Source Initiative", email="hello@ersilia.io"}
 ]
 requires-python = ">=3.10"
 
 dependencies = [
-  "scikit-learn==1.7.2",
-  "tqdm==4.67.1",
-  "rdkit==2024.3.6",
-  "torch==2.9.1",
+  # --- core numerics / IO ---
+  "numpy==1.26.4",
   "pandas==2.3.0",
-  "datashader==0.18.2",
-  "matplotlib==3.10.8",
+  "scipy==1.17.0",
+  "joblib==1.5.3",
+  "tables==3.11.1",       # HDF5 backend required by FPSim2
+  # --- chemistry ---
+  "rdkit==2024.3.6",
+  "fpsim2==0.7.4",
   "ersilia==0.1.52",
+  # --- modelling ---
+  "scikit-learn==1.7.2",
+  "torch==2.9.1",
   "umap-learn==0.5.7",
-  "xgboost==3.1.3",
   "opentsne==1.0.4",
+  "xgboost==3.1.3",
   "optuna==4.7.0",
+  # --- plotting ---
+  "matplotlib==3.10.8",
+  "datashader==0.18.2",
+  # --- CLI / logging ---
   "rich==14.3.3",
-  "fpsim2==0.7.4"
-
+  "loguru==0.7.3",
+  "tqdm==4.67.1",
 ]
+
+[project.urls]
+Homepage = "https://github.com/ersilia-os/lazy-chemvis"
+Repository = "https://github.com/ersilia-os/lazy-chemvis"
+Issues = "https://github.com/ersilia-os/lazy-chemvis/issues"
 
 [tool.setuptools.packages.find]
 where = ["src"]

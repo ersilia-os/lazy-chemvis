@@ -11,7 +11,7 @@ from sklearn.impute import SimpleImputer
 from sklearn.preprocessing import RobustScaler
 from sklearn.feature_selection import VarianceThreshold
 
-from ..helpers.logger import get_logger
+from ..helpers.logger import get_logger, console
 
 RDLogger.DisableLog("rdApp.*")
 
@@ -100,17 +100,33 @@ class RDKitDescriptor(object):
         imputer = SimpleImputer()
         feature_filter = VarianceThreshold(threshold=0.0)
         scaler = RobustScaler()
+
+        # One row per input molecule, always. Unparseable molecules and
+        # non-finite descriptors become NaN and are handled by the imputer,
+        # exactly as in transform() — dropping rows here would silently
+        # desynchronise this matrix from the other featurizers' matrices.
         R = []
+        n_desc = len(self.features)
         for smiles in smiles_list:
-            mol = Chem.MolFromSmiles(smiles)
-            if mol is None:
-                continue
-            desc_values = np.array(self.calculator.CalcDescriptors(mol), dtype=float)
-            if not np.all(np.isfinite(desc_values)):
-                continue
+            try:
+                mol = Chem.MolFromSmiles(smiles)
+                if mol is None:
+                    raise ValueError("Invalid molecule")
+                desc_values = np.array(
+                    self.calculator.CalcDescriptors(mol), dtype=float
+                )
+                desc_values[~np.isfinite(desc_values)] = np.nan
+            except Exception:
+                desc_values = np.array([np.nan] * n_desc, dtype=float)
             R += [desc_values]
         X = np.array(R)
-    
+
+        if X.shape[0] != len(smiles_list):
+            raise RuntimeError(
+                f"Descriptor matrix has {X.shape[0]:,} rows for "
+                f"{len(smiles_list):,} input molecules."
+            )
+
     # 1. Clip Raw Values (Handling super-large numbers before stats)
         X = np.clip(X, -1e5, 1e5)
         
@@ -234,9 +250,22 @@ class RDKitDescriptor(object):
             if rdkit_version:
                 logger.debug(f"Saved RDKit version: {rdkit_version}")
             current_rdkit_version = Chem.rdBase.rdkitVersion
-            if current_rdkit_version != rdkit_version:
-                raise ValueError(
-                    f"RDKit version mismatch: got {current_rdkit_version}, expected {rdkit_version}"
+            if rdkit_version and current_rdkit_version != rdkit_version:
+                # A warning, not an error: descriptor values are stable across most
+                # RDKit releases, and refusing to load would make every published
+                # reference space unusable on any other version. Routed through the
+                # Rich console because loguru output is suppressed package-wide.
+                logger.warning(
+                    f"RDKit version mismatch: got {current_rdkit_version}, "
+                    f"reference space was fitted with {rdkit_version}."
+                )
+                console.print(
+                    f"  [bold yellow]![/bold yellow] RDKit version mismatch: this "
+                    f"reference space was fitted with [bold]{rdkit_version}[/bold] but "
+                    f"[bold]{current_rdkit_version}[/bold] is installed.\n"
+                    f"    Descriptor values may differ slightly; install "
+                    f"rdkit=={rdkit_version} for an exact reproduction.",
+                    style="yellow",
                 )
         obj.imputer = joblib.load(os.path.join(desc_path, "imputer.pkl"))
         obj.feature_filter = joblib.load(os.path.join(desc_path, "feature_filter.pkl"))

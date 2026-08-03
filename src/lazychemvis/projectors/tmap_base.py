@@ -5,10 +5,18 @@ import tmap as tm
 import numpy as np
 
 
-def generate_tmap_coords(input_path: str, n_permutations: int = 128, batch_size: int = 10000):
+DEFAULT_K = 100
+DEFAULT_KC = 1000
+
+LOW_MEMORY_DEFAULT_K = 40
+LOW_MEMORY_DEFAULT_KC = 10
+
+
+def generate_tmap_coords(input_path: str, n_permutations: int = 128, batch_size: int = 10000,
+                         k: int = DEFAULT_K, kc: int = DEFAULT_KC):
     """
     Generate TMAP coordinates with memory optimization for large datasets.
-    
+
     Parameters
     ----------
     input_path : str
@@ -17,7 +25,13 @@ def generate_tmap_coords(input_path: str, n_permutations: int = 128, batch_size:
         Number of LSH permutations (default: 128)
     batch_size : int
         Number of molecules to process at once (default: 10000)
-        
+    k : int
+        Number of nearest neighbours used to build the k-NN graph (default: 100).
+        Higher values create more edges between distant clusters, pulling
+        otherwise-floating branches towards the main body of the map.
+    kc : int
+        Node-connectivity factor for the layout (default: 1000).
+
     Returns
     -------
     coords : np.ndarray
@@ -82,14 +96,15 @@ def generate_tmap_coords(input_path: str, n_permutations: int = 128, batch_size:
     print(f"[TMAP] Computing layout (this may take a while)...")
     cfg = tm.LayoutConfiguration()
 # --- KEY PARAMETERS FOR UNIFIED MAP ---
-    
-    # 1. Increase k (Neighbors): The most important fix.
-    # Default is 10. Increasing this to 20-40 forces more edges between
+
+    # 1. k (Neighbors): The most important setting.
+    # TMAP's own default is 10. Raising it forces more edges between
     # distant "islands" and the mainland.
-    cfg.k = 100
-    cfg.kc = 1000 
-    
-    # 2. Increase Repeats: Allows the layout engine more time to pull 
+    print(f"[TMAP] Layout connectivity: k={k}, kc={kc}")
+    cfg.k = k
+    cfg.kc = kc
+
+    # 2. Increase Repeats: Allows the layout engine more time to pull
     # floating branches into the center.
     cfg.mmm_repeats = 1 
     cfg.sl_repeats = 1
@@ -129,16 +144,29 @@ def generate_tmap_coords(input_path: str, n_permutations: int = 128, batch_size:
     return coords, s, t
 
 
-def generate_tmap_coords_low_memory(input_path: str, n_permutations: int = 64):
+def generate_tmap_coords_low_memory(input_path: str, n_permutations: int = 64,
+                                    k: int = LOW_MEMORY_DEFAULT_K,
+                                    kc: int = LOW_MEMORY_DEFAULT_KC):
     """
     Ultra-low memory version for datasets > 1M molecules.
-    
+
     Sacrifices some quality for memory efficiency:
     - Fewer permutations (64 instead of 128)
-    - Reduced layout quality settings
+    - Reduced layout quality settings (lower k, larger nodes)
     - Aggressive garbage collection
-    
+
     Use this if the standard version runs out of memory.
+
+    Parameters
+    ----------
+    input_path : str
+        Path to input X.npy file
+    n_permutations : int
+        Number of LSH permutations (default: 64)
+    k : int
+        Number of nearest neighbours for the k-NN graph (default: 40)
+    kc : int
+        Node-connectivity factor for the layout (default: 10)
     """
     print(f"[TMAP LOW-MEM] Processing {input_path}")
     
@@ -176,7 +204,9 @@ def generate_tmap_coords_low_memory(input_path: str, n_permutations: int = 64):
     cfg.node_size = 1 / 50  # Larger nodes = fewer calculations
     cfg.mmm_repeats = 1
     cfg.sl_repeats = 1
-    cfg.k = 40  # Reduce number of nearest neighbors
+    print(f"[TMAP LOW-MEM] Layout connectivity: k={k}, kc={kc}")
+    cfg.k = k  # Reduce number of nearest neighbors
+    cfg.kc = kc
     
     x, y, s, t, _ = tm.layout_from_lsh_forest(lf, cfg)
     
@@ -205,26 +235,37 @@ if __name__ == "__main__":
                         help="Number of LSH permutations (default: 128, low-mem: 64)")
     parser.add_argument("--batch_size", type=int, default=10000,
                         help="Batch size for processing (default: 10000)")
+    parser.add_argument("--k", type=int, default=None,
+                        help=f"Nearest neighbours for the k-NN graph "
+                             f"(default: {DEFAULT_K}, low-mem: {LOW_MEMORY_DEFAULT_K})")
+    parser.add_argument("--kc", type=int, default=None,
+                        help=f"Node-connectivity factor for the layout "
+                             f"(default: {DEFAULT_KC}, low-mem: {LOW_MEMORY_DEFAULT_KC})")
     args = parser.parse_args()
 
     try:
         if not os.path.exists(args.output_dir):
             os.makedirs(args.output_dir)
 
-        # Choose memory mode
+        # Choose memory mode. Unspecified k / kc fall back to the default for
+        # the selected mode, so behaviour is unchanged unless explicitly overridden.
         if args.low_memory:
             print("=" * 60)
             print("RUNNING IN LOW-MEMORY MODE")
             print("=" * 60)
             coords, s, t = generate_tmap_coords_low_memory(
-                args.input, 
-                n_permutations=min(args.n_permutations, 64)
+                args.input,
+                n_permutations=min(args.n_permutations, 64),
+                k=LOW_MEMORY_DEFAULT_K if args.k is None else args.k,
+                kc=LOW_MEMORY_DEFAULT_KC if args.kc is None else args.kc,
             )
         else:
             coords, s, t = generate_tmap_coords(
                 args.input,
                 n_permutations=args.n_permutations,
-                batch_size=args.batch_size
+                batch_size=args.batch_size,
+                k=DEFAULT_K if args.k is None else args.k,
+                kc=DEFAULT_KC if args.kc is None else args.kc,
             )
         
         # Save results

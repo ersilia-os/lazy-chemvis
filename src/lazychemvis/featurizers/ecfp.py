@@ -15,7 +15,7 @@ from rdkit import Chem
 from rdkit.Chem import AllChem
 from rdkit import RDLogger
 
-from ..helpers.logger import get_logger
+from ..helpers.logger import get_logger, console
 
 RDLogger.DisableLog("rdApp.*")
 
@@ -62,12 +62,36 @@ class ECFPFeaturizer(object):
         return np.array(fp, dtype="int8")
 
     def _compute_fps(self, smiles_list):
+        """
+        Compute fingerprints for a list of SMILES, one row per input molecule.
+
+        Unparseable molecules are left as all-zero rows so that the row count
+        always matches the input. At fit time this cannot happen, because the
+        pipeline validates SMILES before featurizing; at transform time an
+        all-zero fingerprint is reported rather than silently ignored.
+        """
         X = np.zeros((len(smiles_list), self.n_bits), dtype="int8")
+        n_invalid = 0
         for i, smi in enumerate(smiles_list):
             fp = self._compute_fp(smi)
             if fp is None:
+                n_invalid += 1
                 continue
             X[i, :] = fp
+
+        if n_invalid:
+            logger.warning(
+                f"{n_invalid:,} of {len(smiles_list):,} molecules could not be "
+                f"parsed; their fingerprints are all-zero."
+            )
+            console.print(
+                f"  [bold yellow]![/bold yellow] {n_invalid:,} of "
+                f"{len(smiles_list):,} molecules could not be parsed by RDKit — "
+                f"their fingerprints are all-zero and their coordinates are "
+                f"not meaningful.",
+                style="yellow",
+            )
+
         return X
 
     def fit(self, smiles_list, use_cache=True):

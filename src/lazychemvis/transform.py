@@ -101,17 +101,21 @@ def main():
     parser.add_argument(
         "--lib_input",
         type=str,
-        help="Path to input library (SMILES format) or name of built-in dataset",
+        required=True,
+        help="Path to the input library: a CSV file with a header row and SMILES "
+             "in the first column",
     )
     parser.add_argument(
         "--dir_path",
         type=str,
-        help="Directory where trained featurizers and projectors are saved",
+        required=True,
+        help="Directory of a previously fitted reference space",
     )
     parser.add_argument(
         "--output_path",
         type=str,
-        help="Path to save the transformed PCA coordinates (CSV format)",
+        required=True,
+        help="Directory in which the output coordinates and plots are written",
     )
     parser.add_argument(
         "--no_plots",

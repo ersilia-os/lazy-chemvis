@@ -2,6 +2,7 @@ import os
 import gc
 import json
 import shutil
+import time
 import pandas as pd
 import numpy as np
 from tqdm import tqdm
@@ -56,25 +57,49 @@ class CLAMPFeaturizer(object):
 
             current_batch_smiles = smiles_list[i: i + batch_size]
 
-            try:
-                df_batch = self.model.run(current_batch_smiles)
-                valid_indices = []
-                for idx, s in enumerate(current_batch_smiles):
-                    if s in df_batch['input'].values:
-                        valid_indices.append(i + idx)
+            for attempt in range(3):
+                try:
+                    df_batch = self.model.run(current_batch_smiles)
 
-                batch_info = pd.DataFrame({
-                    'original_index': valid_indices,
-                    'smiles': df_batch['input'].values
-                })
-                batch_info.to_csv(info_file, index=False)
+                    returned = df_batch['input'].tolist()
+                    batch_info = pd.DataFrame({
+                        'original_index': [i + idx for idx in range(len(returned))],
+                        'smiles': returned,
+                    })
 
-                numeric_df = df_batch.select_dtypes(include=[np.number])
-                np.save(batch_file, numeric_df.to_numpy(dtype=np.float32))
+                    numeric_df = df_batch.select_dtypes(include=[np.number])
+                    X_batch = numeric_df.to_numpy(dtype=np.float32)
 
-                del df_batch, batch_info, numeric_df
-            except Exception as e:
-                logger.error(f"Error at batch {batch_idx}: {e}")
+                    if X_batch.shape[0] != len(current_batch_smiles):
+                        raise RuntimeError(
+                            f"model returned {X_batch.shape[0]} rows for "
+                            f"{len(current_batch_smiles)} molecules"
+                        )
+
+                    batch_info.to_csv(info_file, index=False)
+                    np.save(batch_file, X_batch)
+
+                    del df_batch, batch_info, numeric_df, X_batch
+                    break
+                except Exception as e:
+                    if attempt < 2:
+                        wait = 5 * (attempt + 1)
+                        logger.warning(
+                            f"Batch {batch_idx} failed ({e}); retrying in {wait}s "
+                            f"(attempt {attempt + 1}/3)."
+                        )
+                        time.sleep(wait)
+                        continue
+                    # Fatal for the same reason as in the CheMeleon featurizer:
+                    # a skipped batch silently drops molecules from the reference set.
+                    logger.error(f"Error at batch {batch_idx}: {e}")
+                    raise RuntimeError(
+                        f"CLAMP featurization failed at batch {batch_idx} "
+                        f"(molecules {i:,}–{i + len(current_batch_smiles):,}) "
+                        f"after 3 attempts: {e}\n"
+                        "Successfully computed batches are cached on disk, so "
+                        "re-running resumes from this point."
+                    ) from e
 
     def fit(self, smiles_list):
         desc_path = os.path.join(self.dir_path, self.featurizer_name)
@@ -120,6 +145,13 @@ class CLAMPFeaturizer(object):
         self.metadata = pd.concat(all_metadata, ignore_index=True)
         del all_metadata
         gc.collect()
+
+        if n_total != len(smiles_list):
+            raise RuntimeError(
+                f"CLAMP produced {n_total:,} rows for {len(smiles_list):,} input "
+                f"molecules. The reference matrices must stay row-aligned; delete "
+                f"{temp_dir} and re-run."
+            )
 
         # Persist merged outputs
         np.save(x_path, self.X)
