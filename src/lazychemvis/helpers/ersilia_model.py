@@ -13,7 +13,7 @@ from ersilia import ModelBase
 from ersilia.api import Model
 
 from .console import quiet
-from .logger import get_logger, console
+from .logger import console, get_logger
 
 logger = get_logger(__name__)
 

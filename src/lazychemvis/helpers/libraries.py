@@ -5,8 +5,8 @@ A library is a CSV file with a header row and SMILES in the first column. Any
 further columns are ignored.
 """
 
-import os
 import csv
+import os
 
 
 def load_any_library(smiles_path: str):

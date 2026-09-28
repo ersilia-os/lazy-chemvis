@@ -1,9 +1,10 @@
 import os
+
 import torch
 import torch.nn as nn
 
-from ..projectors.pca import PCAProjector
 from ..helpers.logger import get_logger
+from ..projectors.pca import PCAProjector
 
 logger = get_logger(__name__)
 
@@ -17,6 +18,19 @@ class PCAFixed(nn.Module):
         self.register_buffer("components", torch.zeros(n_components, n_features))
 
     def forward(self, x):
+        """
+        Project ``x`` onto the principal components.
+
+        Parameters
+        ----------
+        x : torch.Tensor of shape (n_samples, n_features)
+            Preprocessed descriptors.
+
+        Returns
+        -------
+        torch.Tensor of shape (n_samples, n_components)
+            ``(x - mean) @ components.T``, as sklearn's ``PCA.transform``.
+        """
         return (x - self.mean) @ self.components.T
 
     @classmethod
@@ -32,6 +46,21 @@ class PCAFixed(nn.Module):
 
     @staticmethod
     def load(path, map_location=None):
+        """
+        Load a module saved with :meth:`save`.
+
+        Parameters
+        ----------
+        path : str
+            Path to the ``surrogate.pt`` checkpoint.
+        map_location : optional
+            Passed through to :func:`torch.load`.
+
+        Returns
+        -------
+        PCAFixed
+            The module, in evaluation mode.
+        """
         ckpt = torch.load(path, map_location=map_location)
         model = PCAFixed(
             n_features=ckpt["n_features"], n_components=ckpt["n_components"]
@@ -41,6 +70,14 @@ class PCAFixed(nn.Module):
         return model
 
     def save(self, path):
+        """
+        Save the mean, components and shape to a checkpoint.
+
+        Parameters
+        ----------
+        path : str
+            Destination file, conventionally ``surrogate.pt``.
+        """
         torch.save(
             {
                 "state_dict": self.state_dict(),
@@ -52,6 +89,15 @@ class PCAFixed(nn.Module):
 
 
 class PCASurrogate(object):
+    """
+    Exact surrogate for the PCA projection: the fitted PCA as a frozen linear module.
+
+    Parameters
+    ----------
+    dir_path : str
+        Reference space directory holding the fitted PCA projector.
+    """
+
     def __init__(self, dir_path: str):
         self.surrogate_name = "pca"
         self.dir_path = os.path.abspath(dir_path)
@@ -59,6 +105,7 @@ class PCASurrogate(object):
         self.n_dim = 2
 
     def fit(self):
+        """Re-express the fitted sklearn PCA as a :class:`PCAFixed` module."""
         logger.info("Fitting PCA surrogate model...")
         pca = PCAProjector.load(dir_path=self.dir_path)
         self.model = PCAFixed.from_sklearn(pca.reducer)
@@ -66,6 +113,7 @@ class PCASurrogate(object):
         logger.success("PCA surrogate model ready.")
 
     def save(self):
+        """Write the module to ``<dir_path>/pca/surrogate.pt``."""
         proj_path = os.path.join(self.dir_path, self.surrogate_name)
         os.makedirs(proj_path, exist_ok=True)
 
@@ -77,6 +125,14 @@ class PCASurrogate(object):
         logger.debug(f"Saved: {file_path}")
 
     def load(self):
+        """
+        Load the module written by :meth:`save`.
+
+        Returns
+        -------
+        PCAFixed
+            The loaded module, also stored as ``self.model``.
+        """
         proj_path = os.path.join(self.dir_path, self.surrogate_name)
         file_path = os.path.join(proj_path, "surrogate.pt")
 

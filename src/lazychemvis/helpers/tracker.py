@@ -53,7 +53,9 @@ class PipelineTracker(object):
     Examples
     --------
     >>> tracker = PipelineTracker()
-    >>> tracker.begin("Fitting reference space", "10,000 molecules")
+    >>> tracker.begin(
+    ...     "Fitting reference space", "10,000 molecules"
+    ... )
     >>> tracker.start("pca", "RDKit descriptors -> PCA")
     >>> tracker.substep("RDKit featurization")
     >>> tracker.complete("pca")

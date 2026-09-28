@@ -1,15 +1,15 @@
+import gc
 import os
 import shutil
+
 import joblib
 import numpy as np
-import gc
 from openTSNE import TSNE
-from sklearn.preprocessing import MinMaxScaler
-from sklearn.decomposition import PCA
-
 from rich.panel import Panel
+from sklearn.decomposition import PCA
+from sklearn.preprocessing import MinMaxScaler
 
-from ..helpers.logger import get_logger, console
+from ..helpers.logger import console, get_logger
 
 logger = get_logger(__name__)
 
@@ -18,6 +18,7 @@ class TSNEProjector(object):
     """
     Perform t-SNE projection using openTSNE for high-performance embedding.
     """
+
     def __init__(self, dir_path: str, perplexity: int = 100, verbose: bool = False):
         self.projector_name = "tsne"
         self.dir_path = os.path.abspath(dir_path)
@@ -31,7 +32,7 @@ class TSNEProjector(object):
         self.pca = None
         self.scaler = None
         self.embedding = None  # This is the TSNEEmbedding object
-        self.X = None          # This stores the final 2D coordinates
+        self.X = None  # This stores the final 2D coordinates
 
     def fit(self, X=None):
         """Fit PCA and openTSNE on the descriptor matrix."""
@@ -42,6 +43,7 @@ class TSNEProjector(object):
         if X is None:
             logger.info("[1/4] Loading CheMeleon embeddings...")
             from ..featurizers.chemeleon import CheMeleonFeaturizer
+
             featurizer = CheMeleonFeaturizer.load(dir_path=self.dir_path)
             X = featurizer.X
             logger.info(f"Loaded: {X.shape[0]:,} molecules × {X.shape[1]} features")
@@ -49,7 +51,9 @@ class TSNEProjector(object):
             del featurizer
             gc.collect()
         else:
-            logger.info(f"[1/4] Using provided data: {X.shape[0]:,} molecules × {X.shape[1]} features")
+            logger.info(
+                f"[1/4] Using provided data: {X.shape[0]:,} molecules × {X.shape[1]} features"
+            )
 
         if X is None:
             raise ValueError("Data matrix X is empty.")
@@ -78,7 +82,7 @@ class TSNEProjector(object):
             n_jobs=-1,
             random_state=42,
             verbose=self.verbose,
-            negative_gradient_method="fft"
+            negative_gradient_method="fft",
         )
 
         self.embedding = reducer.fit(X_pca)

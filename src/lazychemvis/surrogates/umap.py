@@ -2,8 +2,8 @@ import os
 
 import pandas as pd
 
-from .base import XGBSurrogate
 from ..helpers.logger import get_logger
+from .base import XGBSurrogate
 
 logger = get_logger(__name__)
 
@@ -42,6 +42,6 @@ class UMAPSurrogate(XGBSurrogate):
 
         logger.info("Metadata found — aligning ECFP with UMAP coordinates...")
         valid_indices = pd.read_csv(metadata_path)["original_index"].values
-        X = X[valid_indices]   # fancy-index → new copy
+        X = X[valid_indices]  # fancy-index → new copy
         logger.success(f"Alignment complete: {X.shape[0]:,} samples.")
         return X

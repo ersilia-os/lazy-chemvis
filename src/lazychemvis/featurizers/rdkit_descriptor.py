@@ -1,15 +1,14 @@
-import os
 import json
+import os
 import shutil
+
 import joblib
 import numpy as np
-
-from rdkit import Chem
+from rdkit import Chem, RDLogger
 from rdkit.ML.Descriptors import MoleculeDescriptors
-from rdkit import RDLogger
+from sklearn.feature_selection import VarianceThreshold
 from sklearn.impute import SimpleImputer
 from sklearn.preprocessing import RobustScaler
-from sklearn.feature_selection import VarianceThreshold
 
 from ..helpers.cache import cache_key, invalidate, mismatch_reason, write_key
 from ..helpers.logger import get_logger
@@ -45,6 +44,7 @@ class RDKitDescriptor(object):
     saved and reused to ensure consistent descriptor processing across
     datasets.
     """
+
     def __init__(self, dir_path: str):
         """
         Initialize the RDKitDescriptor featurizer.
@@ -101,7 +101,9 @@ class RDKitDescriptor(object):
         self._key = self._cache_key(smiles_list)
         self._from_cache = False
 
-        reason = mismatch_reason(desc_path, self._key) if reuse else "--no-cache was given"
+        reason = (
+            mismatch_reason(desc_path, self._key) if reuse else "--no-cache was given"
+        )
         if reason is None:
             logger.info(f"Reusing cached RDKit descriptors at {desc_path}")
             cached = RDKitDescriptor.load(dir_path=self.dir_path)
@@ -143,21 +145,21 @@ class RDKitDescriptor(object):
                 f"{len(smiles_list):,} input molecules."
             )
 
-    # 1. Clip Raw Values (Handling super-large numbers before stats)
+        # 1. Clip Raw Values (Handling super-large numbers before stats)
         X = np.clip(X, -1e5, 1e5)
-        
+
         # 2. Impute (Fit AND Transform)
         imputer.fit(X)
-        X = imputer.transform(X) # <--- THIS WAS MISSING
-        
+        X = imputer.transform(X)  # <--- THIS WAS MISSING
+
         # 3. Filter (Fit AND Transform)
         feature_filter.fit(X)
         X = feature_filter.transform(X)
-        
+
         # 4. Scale (Fit AND Transform)
         scaler.fit(X)
         X = scaler.transform(X)
-        
+
         self.imputer = imputer
         self.feature_filter = feature_filter
         self.scaler = scaler
@@ -195,19 +197,19 @@ class RDKitDescriptor(object):
             except Exception:
                 desc_values = np.array([np.nan] * n_desc, dtype=float)
             R += [desc_values]
-        
+
         X = np.array(R)
-        
+
         # MUST MATCH FIT ORDER EXACTLY:
         # 1. Clip
-        X = np.clip(X, -1e5, 1e5) 
-        
+        X = np.clip(X, -1e5, 1e5)
+
         # 2. Impute
         X = self.imputer.transform(X)
-        
+
         # 3. Filter
         X = self.feature_filter.transform(X)
-        
+
         # 4. Scale
         X = self.scaler.transform(X)
         return X

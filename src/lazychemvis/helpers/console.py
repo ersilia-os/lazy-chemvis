@@ -15,11 +15,11 @@ import contextlib
 import io
 import sys
 
+from rich import box
 from rich.console import Console
 from rich.padding import Padding
 from rich.panel import Panel
 from rich.table import Table
-from rich import box
 
 # highlight=False: Rich's automatic highlighting turns numbers and paths in our
 # own messages into unintended colours.
@@ -38,7 +38,7 @@ _KINDS = {
     "success": ("✓", "bold green"),
     "warning": ("⚠", "bold yellow"),
     "error": ("✖", "bold red"),
-    "run": ("▪", None),          # None → the active step colour
+    "run": ("▪", None),  # None → the active step colour
     "info": ("·", "dim"),
 }
 
@@ -174,7 +174,9 @@ def themed_table(title: str, *, color: str = None, caption: str = None) -> Table
     )
 
 
-def summary_panel(title: str, rows, *, border_style: str = None, icon: str = None) -> None:
+def summary_panel(
+    title: str, rows, *, border_style: str = None, icon: str = None
+) -> None:
     """
     Print a bordered rounded panel wrapping a two-column label/value table.
 
@@ -197,8 +199,13 @@ def summary_panel(title: str, rows, *, border_style: str = None, icon: str = Non
         table.add_row(str(label), str(value))
     heading = f"{icon} {title}" if icon else title
     console.print(
-        Panel(table, title=f"[bold {color}]{heading}[/bold {color}]",
-              title_align="left", border_style=color, box=box.ROUNDED)
+        Panel(
+            table,
+            title=f"[bold {color}]{heading}[/bold {color}]",
+            title_align="left",
+            border_style=color,
+            box=box.ROUNDED,
+        )
     )
 
 
@@ -213,7 +220,11 @@ def heat_hex(t: float) -> str:
     except (TypeError, ValueError):
         t = 0.0
     # stylia's lime → amber → crimson, interpolated in RGB.
-    stops = [(0.0, (0x6B, 0xBF, 0x59)), (0.5, (0xFC, 0xBF, 0x49)), (1.0, (0xE6, 0x39, 0x46))]
+    stops = [
+        (0.0, (0x6B, 0xBF, 0x59)),
+        (0.5, (0xFC, 0xBF, 0x49)),
+        (1.0, (0xE6, 0x39, 0x46)),
+    ]
     for (t0, c0), (t1, c1) in zip(stops, stops[1:]):
         if t <= t1:
             f = 0.0 if t1 == t0 else (t - t0) / (t1 - t0)

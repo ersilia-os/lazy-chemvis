@@ -25,17 +25,20 @@ class FakeModel(object):
         self.fail_on_call = fail_on_call
 
     def run(self, smiles):
+        """Return one embedding row per SMILES, raising on the configured call."""
         self.calls += 1
         if self.fail_on_call is not None and self.calls == self.fail_on_call:
             raise KeyboardInterrupt("simulated crash")
-        values = np.array([[len(s), s.count("c"), s.count("O"), s.count("N")] for s in smiles],
-                          dtype=float)
+        values = np.array(
+            [[len(s), s.count("c"), s.count("O"), s.count("N")] for s in smiles],
+            dtype=float,
+        )
         df = pd.DataFrame(values, columns=["f0", "f1", "f2", "f3"])
         df.insert(0, "input", smiles)
         return df
 
     def close(self):
-        pass
+        """Nothing to release."""
 
 
 def _featurizer(cls, dir_path, model, batch_size=5):
@@ -61,7 +64,9 @@ def test_interrupted_run_resumes_from_cached_batches(tmp_path, library_a, cls):
 
 
 @pytest.mark.parametrize("cls", [CheMeleonFeaturizer, CLAMPFeaturizer])
-def test_batches_from_another_library_are_discarded(tmp_path, library_a, library_b, cls):
+def test_batches_from_another_library_are_discarded(
+    tmp_path, library_a, library_b, cls
+):
     with pytest.raises(KeyboardInterrupt):
         _featurizer(cls, str(tmp_path), FakeModel(fail_on_call=3)).fit(library_a)
 
@@ -73,7 +78,9 @@ def test_batches_from_another_library_are_discarded(tmp_path, library_a, library
 
 
 @pytest.mark.parametrize("cls", [CheMeleonFeaturizer, CLAMPFeaturizer])
-def test_finished_matrix_is_reused_only_for_same_library(tmp_path, library_a, library_b, cls):
+def test_finished_matrix_is_reused_only_for_same_library(
+    tmp_path, library_a, library_b, cls
+):
     first = _featurizer(cls, str(tmp_path), FakeModel())
     first.fit(library_a)
     first.save()

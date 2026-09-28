@@ -11,6 +11,7 @@ import json
 import os
 
 import matplotlib
+
 matplotlib.use("Agg")  # non-interactive backend — prevents Tk thread conflicts
 import matplotlib.pyplot as plt
 import stylia
@@ -81,8 +82,10 @@ class BasePlot(object):
             return
 
         self.fig, axs = stylia.create_figure(
-            panels[0], panels[1],
-            width=cols / CELLS_PER_WIDTH, height=rows / CELLS_PER_WIDTH,
+            panels[0],
+            panels[1],
+            width=cols / CELLS_PER_WIDTH,
+            height=rows / CELLS_PER_WIDTH,
         )
         self.axes = axs
         self.ax = self.next_ax()
@@ -99,6 +102,7 @@ class BasePlot(object):
 
     @property
     def report_dir(self):
+        """Directory the figure is written into: ``<path>/report``."""
         return os.path.join(self.path, REPORT_SUBFOLDER)
 
     # ------------------------------------------------------------------
@@ -131,7 +135,8 @@ class BasePlot(object):
         plt.savefig(png_path, dpi=REPORT_DPI, transparent=False, bbox_inches="tight")
         plt.savefig(
             os.path.join(pdf_dir, self.name + ".pdf"),
-            transparent=False, bbox_inches="tight",
+            transparent=False,
+            bbox_inches="tight",
         )
         self._record_cells()
         logger.debug(f"Saved figure: {png_path}")

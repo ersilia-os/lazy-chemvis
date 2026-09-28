@@ -1,11 +1,11 @@
-import os
 import gc
 import json
+import os
 import shutil
 import time
-import pandas as pd
-import numpy as np
 
+import numpy as np
+import pandas as pd
 from rdkit import RDLogger
 
 from ..helpers.cache import cache_key, invalidate, mismatch_reason, write_key
@@ -20,12 +20,27 @@ logger = get_logger(__name__)
 
 
 class CLAMPFeaturizer(object):
+    """
+    CLAMP embeddings for the reference set, served through Ersilia (``eos3l5f``).
 
-    def __init__(self, dir_path: str, model_id: str = 'eos3l5f'):
+    Molecules are run in batches whose results are cached on disk, so an
+    interrupted fit resumes where it stopped. Alongside the embeddings it writes
+    ``valid_metadata.csv``, which the UMAP surrogate uses to align rows. Used at fit
+    time only: the UMAP surrogate replaces it when projecting new molecules.
+
+    Parameters
+    ----------
+    dir_path : str
+        Reference space directory; outputs go to ``<dir_path>/CLAMP``.
+    model_id : str, default='eos3l5f'
+        Ersilia model identifier.
+    """
+
+    def __init__(self, dir_path: str, model_id: str = "eos3l5f"):
         if not os.path.exists(dir_path):
             os.makedirs(dir_path)
 
-        self.featurizer_name = 'CLAMP'
+        self.featurizer_name = "CLAMP"
         self._model_id = model_id
         self._model_instance = None
         self.dir_path = os.path.abspath(dir_path)
@@ -88,9 +103,11 @@ class CLAMPFeaturizer(object):
                     bar.set_note(f"batch {batch_idx} cached")
                     continue
 
-                current_batch_smiles = smiles_list[i: i + batch_size]
+                current_batch_smiles = smiles_list[i : i + batch_size]
                 bar.set_note(f"molecules {i:,}–{i + len(current_batch_smiles):,}")
-                self._run_batch(batch_idx, i, current_batch_smiles, batch_file, info_file)
+                self._run_batch(
+                    batch_idx, i, current_batch_smiles, batch_file, info_file
+                )
 
     def _run_batch(self, batch_idx, i, current_batch_smiles, batch_file, info_file):
         """Run one batch through the model, with retries, and persist it."""
@@ -99,11 +116,13 @@ class CLAMPFeaturizer(object):
                 with quiet(logger, label=f"ersilia batch {batch_idx}"):
                     df_batch = self.model.run(current_batch_smiles)
 
-                returned = df_batch['input'].tolist()
-                batch_info = pd.DataFrame({
-                    'original_index': [i + idx for idx in range(len(returned))],
-                    'smiles': returned,
-                })
+                returned = df_batch["input"].tolist()
+                batch_info = pd.DataFrame(
+                    {
+                        "original_index": [i + idx for idx in range(len(returned))],
+                        "smiles": returned,
+                    }
+                )
 
                 numeric_df = df_batch.select_dtypes(include=[np.number])
                 X_batch = numeric_df.to_numpy(dtype=np.float32)
@@ -142,8 +161,8 @@ class CLAMPFeaturizer(object):
                     f"(molecules {i:,}–{i + len(current_batch_smiles):,}) "
                     f"after 3 attempts: {e}\n"
                     "Successfully computed batches are cached on disk, so "
-                        "re-running resumes from this point."
-                    ) from e
+                    "re-running resumes from this point."
+                ) from e
 
     def fit(self, smiles_list, reuse=True):
         """
@@ -185,16 +204,22 @@ class CLAMPFeaturizer(object):
         self._compute_fps(smiles_list)
 
         batch_files = sorted(
-            [f for f in os.listdir(temp_dir) if f.startswith('batch_') and f.endswith('.npy')],
-            key=lambda x: int(x.split('_')[1].split('.')[0])
+            [
+                f
+                for f in os.listdir(temp_dir)
+                if f.startswith("batch_") and f.endswith(".npy")
+            ],
+            key=lambda x: int(x.split("_")[1].split(".")[0]),
         )
 
         # Determine total shape without loading data (avoids doubling peak memory)
         full_paths = [os.path.join(temp_dir, f) for f in batch_files]
-        shapes = [np.load(p, mmap_mode='r').shape for p in full_paths]
+        shapes = [np.load(p, mmap_mode="r").shape for p in full_paths]
         n_total = sum(s[0] for s in shapes)
         n_feat = shapes[0][1]
-        logger.info(f"Merging {len(batch_files)} batch files → {n_total:,} molecules × {n_feat} features")
+        logger.info(
+            f"Merging {len(batch_files)} batch files → {n_total:,} molecules × {n_feat} features"
+        )
 
         # Pre-allocate and fill incrementally — peak memory = final array + one batch
         self.X = np.empty((n_total, n_feat), dtype=np.float32)
@@ -204,7 +229,7 @@ class CLAMPFeaturizer(object):
         for b_file, shape, full_path in zip(batch_files, shapes, full_paths):
             batch = np.load(full_path)
             n = shape[0]
-            self.X[row: row + n] = batch
+            self.X[row : row + n] = batch
             row += n
             del batch
             gc.collect()
@@ -227,7 +252,9 @@ class CLAMPFeaturizer(object):
         np.save(x_path, self.X)
         self.metadata.to_csv(csv_out_path, index=False)
         write_key(desc_path, key)
-        logger.success(f"Done. Retained {len(self.metadata):,} of {len(smiles_list):,} molecules.")
+        logger.success(
+            f"Done. Retained {len(self.metadata):,} of {len(smiles_list):,} molecules."
+        )
 
         # Clean up temp batch files now that X.npy and metadata are on disk
         try:
@@ -254,7 +281,7 @@ class CLAMPFeaturizer(object):
         metadata = {
             "featurizer": self.featurizer_name,
             "model_id": self._model_id,
-            "dir_path": self.dir_path
+            "dir_path": self.dir_path,
         }
 
         with open(os.path.join(desc_path, "featurizer.json"), "w") as f:

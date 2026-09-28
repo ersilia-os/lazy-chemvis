@@ -14,19 +14,18 @@ groups:
   built from persisted artifacts after the fact.
 """
 
-import numpy as np
-import pandas as pd
-
 import datashader as ds
 import datashader.transfer_functions as tf
+import numpy as np
+import pandas as pd
 import stylia
 from scipy.stats import pearsonr
 from sklearn.cluster import KMeans
 
+from ..helpers.logger import get_logger
 from . import BasePlot
 from .colors import grey_ramp, projection_rgb, rgb
 from .fetcher import PROJECTION_LABELS, ResultsFetcher
-from ..helpers.logger import get_logger
 
 logger = get_logger(__name__)
 
@@ -71,8 +70,10 @@ def _scatter_landscape(coords):
     from matplotlib.figure import Figure
     from PIL import Image
 
-    fig = Figure(figsize=(_SCATTER_CANVAS_IN, _SCATTER_CANVAS_IN),
-                 dpi=_CANVAS_PX / _SCATTER_CANVAS_IN)
+    fig = Figure(
+        figsize=(_SCATTER_CANVAS_IN, _SCATTER_CANVAS_IN),
+        dpi=_CANVAS_PX / _SCATTER_CANVAS_IN,
+    )
     # stylia enables tight layout globally; this canvas is a single full-bleed axes.
     fig.set_layout_engine("none")
     canvas = FigureCanvasAgg(fig)
@@ -86,8 +87,13 @@ def _scatter_landscape(coords):
     # into a faint wash and the landscape fades out again.
     size = float(np.clip(12_000 / max(len(coords), 1), 0.4, 15))
     # Lightened so the landscape recedes behind whatever is drawn on top of it.
-    ax.scatter(coords[:, 0], coords[:, 1], s=size,
-               color=rgb("reference", lighten=0.4), linewidths=0)
+    ax.scatter(
+        coords[:, 0],
+        coords[:, 1],
+        s=size,
+        color=rgb("reference", lighten=0.4),
+        linewidths=0,
+    )
     canvas.draw()
     return Image.fromarray(np.asarray(canvas.buffer_rgba())).convert("RGB")
 
@@ -96,8 +102,10 @@ def _shade_landscape(coords, cmap=None):
     """Aggregate an (n, 2) coordinate array into a shaded PIL image."""
     df = pd.DataFrame({"x": coords[:, 0], "y": coords[:, 1]})
     canvas = ds.Canvas(
-        plot_width=_CANVAS_PX, plot_height=_CANVAS_PX,
-        x_range=(EXTENT[0], EXTENT[1]), y_range=(EXTENT[2], EXTENT[3]),
+        plot_width=_CANVAS_PX,
+        plot_height=_CANVAS_PX,
+        x_range=(EXTENT[0], EXTENT[1]),
+        y_range=(EXTENT[2], EXTENT[3]),
     )
     agg = canvas.points(df, "x", "y")
     img = tf.shade(agg, cmap=cmap or grey_ramp(), how="eq_hist")
@@ -147,6 +155,7 @@ def _style_axes(ax, title=None):
 # Landscapes
 # ----------------------------------------------------------------------
 
+
 class ReferenceLandscapePlot(BasePlot):
     """The reference chemical space for one projection."""
 
@@ -168,8 +177,16 @@ class ReferenceLandscapePlot(BasePlot):
 class OverlayPlot(BasePlot):
     """New molecules overlaid on the reference landscape."""
 
-    def __init__(self, projection_name, path, reference_path=None, new_coords=None,
-                 label="Input molecules", ax=None, fetcher=None):
+    def __init__(
+        self,
+        projection_name,
+        path,
+        reference_path=None,
+        new_coords=None,
+        label="Input molecules",
+        ax=None,
+        fetcher=None,
+    ):
         self.projection_name = projection_name
         self.name = f"{projection_name}_overlay"
         super().__init__(ax=ax, path=path, cells=(3, 3))
@@ -192,10 +209,15 @@ class OverlayPlot(BasePlot):
         # prominent and ten thousand still leave the landscape visible.
         size = float(np.clip(2_000 / max(len(finite), 1), 1, 10))
         self.ax.scatter(
-            finite[:, 0], finite[:, 1],
-            color=rgb("overlay"), s=size, alpha=1.0,
-            edgecolors="white", linewidths=0.3,
-            label=f"{label} (n={len(finite):,})", zorder=10,
+            finite[:, 0],
+            finite[:, 1],
+            color=rgb("overlay"),
+            s=size,
+            alpha=1.0,
+            edgecolors="white",
+            linewidths=0.3,
+            label=f"{label} (n={len(finite):,})",
+            zorder=10,
         )
         proj_label = PROJECTION_LABELS.get(projection_name, projection_name.upper())
         _style_axes(self.ax, f"Overlay — {proj_label}")
@@ -211,7 +233,9 @@ class CoordinateDensityPlot(BasePlot):
     tells you whether the input covers the reference space or piles into a corner.
     """
 
-    def __init__(self, projection_name, path, reference_path=None, ax=None, fetcher=None):
+    def __init__(
+        self, projection_name, path, reference_path=None, ax=None, fetcher=None
+    ):
         self.projection_name = projection_name
         self.name = f"{projection_name}_coordinate_density"
         super().__init__(ax=ax, path=path, cells=(2, 6), panels=(1, 2))
@@ -237,29 +261,55 @@ class CoordinateDensityPlot(BasePlot):
         first = self.ax
         for axis in (0, 1):
             ax = first if axis == 0 else self.next_ax()
-            ax.hist(ref[:, axis], bins=bins, density=True, histtype="stepfilled",
-                    color=rgb("reference", lighten=0.6), label="reference")
-            ax.hist(new[:, axis], bins=bins, density=True, histtype="step",
-                    color=color, linewidth=STEP_LINEWIDTH, label="input")
+            ax.hist(
+                ref[:, axis],
+                bins=bins,
+                density=True,
+                histtype="stepfilled",
+                color=rgb("reference", lighten=0.6),
+                label="reference",
+            )
+            ax.hist(
+                new[:, axis],
+                bins=bins,
+                density=True,
+                histtype="step",
+                color=color,
+                linewidth=STEP_LINEWIDTH,
+                label="input",
+            )
             ax.set_xlim(lo, hi)
-            stylia.label(ax, xlabel=f"{'xy'[axis]} coordinate",
-                         ylabel="density" if axis == 0 else "")
+            stylia.label(
+                ax,
+                xlabel=f"{'xy'[axis]} coordinate",
+                ylabel="density" if axis == 0 else "",
+            )
         first.legend()
 
         label = PROJECTION_LABELS.get(projection_name, projection_name.upper())
-        self.fig.suptitle(f"Coordinate coverage — {label}",
-                          x=0.02, y=1.0, ha="left", va="bottom")
+        self.fig.suptitle(
+            f"Coordinate coverage — {label}", x=0.02, y=1.0, ha="left", va="bottom"
+        )
 
 
 # ----------------------------------------------------------------------
 # Validation figures (built during surrogate cross-validation)
 # ----------------------------------------------------------------------
 
+
 class FoldComparisonPlot(BasePlot):
     """Ground truth vs surrogate prediction for one held-out fold, side by side."""
 
-    def __init__(self, projection_name, fold_num, y_test_true, y_test_pred,
-                 metrics, path, background_image=None):
+    def __init__(
+        self,
+        projection_name,
+        fold_num,
+        y_test_true,
+        y_test_pred,
+        metrics,
+        path,
+        background_image=None,
+    ):
         self.name = f"{projection_name}_fold_{fold_num}_comparison"
         super().__init__(path=path, cells=(3, 6), panels=(1, 2))
 
@@ -276,8 +326,15 @@ class FoldComparisonPlot(BasePlot):
             # slowest part of reporting on a large library.
             if background_image is not None:
                 ax.imshow(background_image, extent=EXTENT, interpolation="lanczos")
-            ax.scatter(coords[:, 0], coords[:, 1], color=color, s=2, alpha=0.6,
-                       zorder=10, label=name)
+            ax.scatter(
+                coords[:, 0],
+                coords[:, 1],
+                color=color,
+                s=2,
+                alpha=0.6,
+                zorder=10,
+                label=name,
+            )
             _style_axes(ax, name)
             ax.set_xlim(EXTENT[0], EXTENT[1])
             ax.set_ylim(EXTENT[2], EXTENT[3])
@@ -286,7 +343,10 @@ class FoldComparisonPlot(BasePlot):
         self.fig.suptitle(
             f"{label} surrogate — fold {fold_num}   "
             f"R² = {r2_val:.4f}   mean Euclidean error = {euc_val:.4f}",
-            x=0.02, y=1.0, ha="left", va="bottom",
+            x=0.02,
+            y=1.0,
+            ha="left",
+            va="bottom",
         )
 
 
@@ -315,11 +375,24 @@ class FoldDistributionsPlot(BasePlot):
         for axis in (0, 1):
             ax = self.next_ax()
             bins = np.linspace(-1.05, 1.05, 50)
-            ax.hist(y_test_true[:, axis], bins=bins, density=True, histtype="step",
-                    color=rgb("truth"), linewidth=STEP_LINEWIDTH, label="true")
-            ax.hist(y_test_pred[:, axis], bins=bins, density=True, histtype="step",
-                    color=rgb("prediction"), linewidth=STEP_LINEWIDTH,
-                    label="predicted")
+            ax.hist(
+                y_test_true[:, axis],
+                bins=bins,
+                density=True,
+                histtype="step",
+                color=rgb("truth"),
+                linewidth=STEP_LINEWIDTH,
+                label="true",
+            )
+            ax.hist(
+                y_test_pred[:, axis],
+                bins=bins,
+                density=True,
+                histtype="step",
+                color=rgb("prediction"),
+                linewidth=STEP_LINEWIDTH,
+                label="predicted",
+            )
             ax.set_title(f"{'xy'[axis]} distribution", loc="left")
             ax.set_xlabel(f"{'xy'[axis]} coordinate")
             ax.set_ylabel("density")
@@ -334,8 +407,16 @@ class FoldZonesPlot(BasePlot):
     the predictions, so a zone that scatters is a zone the surrogate distorts.
     """
 
-    def __init__(self, projection_name, fold_num, y_test_true, y_test_pred, path,
-                 n_zones=10, random_state=42):
+    def __init__(
+        self,
+        projection_name,
+        fold_num,
+        y_test_true,
+        y_test_pred,
+        path,
+        n_zones=10,
+        random_state=42,
+    ):
         self.name = f"{projection_name}_fold_{fold_num}_zones"
         super().__init__(path=path, cells=(3, 6), panels=(1, 2))
 
@@ -352,20 +433,32 @@ class FoldZonesPlot(BasePlot):
             (ax2, y_test_pred, "Predicted, coloured by true zone"),
         ):
             ax.scatter(coords[:, 0], coords[:, 1], c=labels, cmap=cmap, s=4, alpha=0.7)
-            ax.scatter(km.cluster_centers_[:, 0], km.cluster_centers_[:, 1],
-                       marker="x", c="black", s=40, zorder=10)
+            ax.scatter(
+                km.cluster_centers_[:, 0],
+                km.cluster_centers_[:, 1],
+                marker="x",
+                c="black",
+                s=40,
+                zorder=10,
+            )
             _style_axes(ax, name)
             ax.set_xlim(EXTENT[0], EXTENT[1])
             ax.set_ylim(EXTENT[2], EXTENT[3])
 
         label = PROJECTION_LABELS.get(projection_name, projection_name.upper())
-        self.fig.suptitle(f"{label} surrogate — fold {fold_num}: zone coherence",
-                          x=0.02, y=1.0, ha="left", va="bottom")
+        self.fig.suptitle(
+            f"{label} surrogate — fold {fold_num}: zone coherence",
+            x=0.02,
+            y=1.0,
+            ha="left",
+            va="bottom",
+        )
 
 
 # ----------------------------------------------------------------------
 # Summary figures
 # ----------------------------------------------------------------------
+
 
 class CvMetricBarsPlot(BasePlot):
     """Cross-validation metrics for every surrogate, mean ± std, side by side."""
@@ -385,8 +478,12 @@ class CvMetricBarsPlot(BasePlot):
             self.is_available = False
             return
 
-        keys = [("r2", "R²"), ("rmse", "RMSE"), ("mae", "MAE"),
-                ("euclidean", "Euclidean")]
+        keys = [
+            ("r2", "R²"),
+            ("rmse", "RMSE"),
+            ("mae", "MAE"),
+            ("euclidean", "Euclidean"),
+        ]
         width = 0.8 / len(series)
         positions = np.arange(len(keys))
 
@@ -394,7 +491,11 @@ class CvMetricBarsPlot(BasePlot):
             means = [m[f"{k}_mean"] for k, _ in keys]
             stds = [m[f"{k}_std"] for k, _ in keys]
             self.ax.bar(
-                positions + i * width, means, width, yerr=stds, capsize=3,
+                positions + i * width,
+                means,
+                width,
+                yerr=stds,
+                capsize=3,
                 color=projection_rgb(projection),
                 label=PROJECTION_LABELS.get(projection, projection),
             )
@@ -428,11 +529,14 @@ class EuclideanErrorHistogramPlot(BasePlot):
                 continue
             errors = df["euclidean_error"].to_numpy()
             self.ax.hist(
-                errors, bins=60, density=True, histtype="step",
+                errors,
+                bins=60,
+                density=True,
+                histtype="step",
                 linewidth=STEP_LINEWIDTH,
                 color=projection_rgb(projection),
                 label=f"{PROJECTION_LABELS.get(projection, projection)} "
-                      f"(median {np.median(errors):.3f})",
+                f"(median {np.median(errors):.3f})",
             )
             drawn = True
 
@@ -442,7 +546,9 @@ class EuclideanErrorHistogramPlot(BasePlot):
 
         self.ax.set_xlabel("Euclidean coordinate error")
         self.ax.set_ylabel("density")
-        self.ax.set_title("Per-molecule surrogate error, pooled across folds", loc="left")
+        self.ax.set_title(
+            "Per-molecule surrogate error, pooled across folds", loc="left"
+        )
         self.ax.legend(frameon=False, fontsize="small")
 
 

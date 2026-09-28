@@ -184,9 +184,7 @@ class ResultsFetcher(object):
         if not os.path.isdir(val_dir):
             return []
         return sorted(
-            os.path.join(val_dir, f)
-            for f in os.listdir(val_dir)
-            if f.endswith(".png")
+            os.path.join(val_dir, f) for f in os.listdir(val_dir) if f.endswith(".png")
         )
 
     # ------------------------------------------------------------------

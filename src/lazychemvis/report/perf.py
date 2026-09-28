@@ -58,18 +58,20 @@ def summarise(metrics):
     quality, quality_class = r2_verdict(metrics["r2_mean"])
     accuracy, accuracy_class = euclidean_verdict(metrics["euclidean_mean"])
     out = dict(metrics)
-    out.update({
-        "quality": quality,
-        "quality_class": quality_class,
-        "accuracy": accuracy,
-        "accuracy_class": accuracy_class,
-        # Mean ± 1 std. Deliberately *not* labelled a 95% confidence interval:
-        # ±1 std over 5 folds is roughly a 68% spread, and calling it 95% would
-        # overstate the precision of the estimate.
-        "spread_low": metrics["r2_mean"] - metrics["r2_std"],
-        "spread_high": metrics["r2_mean"] + metrics["r2_std"],
-        "stable": metrics["r2_std"] <= 0.05,
-    })
+    out.update(
+        {
+            "quality": quality,
+            "quality_class": quality_class,
+            "accuracy": accuracy,
+            "accuracy_class": accuracy_class,
+            # Mean ± 1 std. Deliberately *not* labelled a 95% confidence interval:
+            # ±1 std over 5 folds is roughly a 68% spread, and calling it 95% would
+            # overstate the precision of the estimate.
+            "spread_low": metrics["r2_mean"] - metrics["r2_std"],
+            "spread_high": metrics["r2_mean"] + metrics["r2_std"],
+            "stable": metrics["r2_std"] <= 0.05,
+        }
+    )
     return out
 
 

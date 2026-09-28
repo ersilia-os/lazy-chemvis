@@ -11,12 +11,12 @@ iterating on a figure's styling without redoing a whole report.
 
 import os
 
-from . import REPORT_SUBFOLDER
-from .fetcher import PROJECTIONS, ResultsFetcher
-from .html import write_html_report
-from . import plots as _plots
 from ..helpers.console import echo
 from ..helpers.logger import get_logger
+from . import REPORT_SUBFOLDER
+from . import plots as _plots
+from .fetcher import PROJECTIONS, ResultsFetcher
+from .html import write_html_report
 
 logger = get_logger(__name__)
 
@@ -62,7 +62,9 @@ class _BaseReporter(object):
             if self.plot_name:
                 jobs = [(name, fn) for name, fn in jobs if name == self.plot_name]
                 if not jobs:
-                    logger.warning(f"No figure named '{self.plot_name}' in this report.")
+                    logger.warning(
+                        f"No figure named '{self.plot_name}' in this report."
+                    )
             self._render(jobs)
 
         path = write_html_report(self.path, mode=self.mode, fetcher=self.fetcher)
@@ -91,8 +93,10 @@ class _BaseReporter(object):
             f"(inputs missing), {failed} failed."
         )
         if failed:
-            echo(f"{failed} report figure(s) failed — see the log for details.",
-                 kind="warning")
+            echo(
+                f"{failed} report figure(s) failed — see the log for details.",
+                kind="warning",
+            )
 
 
 class FitReporter(_BaseReporter):
@@ -112,19 +116,30 @@ class FitReporter(_BaseReporter):
         for projection in PROJECTIONS:
             if not f.has_projection(projection):
                 continue
-            jobs.append((
-                f"{projection}_reference_space",
-                lambda p=projection: _plots.ReferenceLandscapePlot(
-                    projection_name=p, path=self.path, fetcher=f
-                ),
-            ))
+            jobs.append(
+                (
+                    f"{projection}_reference_space",
+                    lambda p=projection: _plots.ReferenceLandscapePlot(
+                        projection_name=p, path=self.path, fetcher=f
+                    ),
+                )
+            )
 
-        jobs.append(("cv_metric_bars",
-                     lambda: _plots.CvMetricBarsPlot(path=self.path, fetcher=f)))
-        jobs.append(("euclidean_error_histogram",
-                     lambda: _plots.EuclideanErrorHistogramPlot(path=self.path, fetcher=f)))
-        jobs.append(("step_timing",
-                     lambda: _plots.StepTimingPlot(path=self.path, fetcher=f)))
+        jobs.append(
+            (
+                "cv_metric_bars",
+                lambda: _plots.CvMetricBarsPlot(path=self.path, fetcher=f),
+            )
+        )
+        jobs.append(
+            (
+                "euclidean_error_histogram",
+                lambda: _plots.EuclideanErrorHistogramPlot(path=self.path, fetcher=f),
+            )
+        )
+        jobs.append(
+            ("step_timing", lambda: _plots.StepTimingPlot(path=self.path, fetcher=f))
+        )
         return jobs
 
 
@@ -160,18 +175,26 @@ class TransformReporter(_BaseReporter):
         for projection in PROJECTIONS:
             if not f.has_projection(projection):
                 continue
-            jobs.append((
-                f"{projection}_overlay",
-                lambda p=projection: _plots.OverlayPlot(
-                    projection_name=p, path=self.path,
-                    reference_path=self.reference_path, fetcher=f,
-                ),
-            ))
-            jobs.append((
-                f"{projection}_coordinate_density",
-                lambda p=projection: _plots.CoordinateDensityPlot(
-                    projection_name=p, path=self.path,
-                    reference_path=self.reference_path, fetcher=f,
-                ),
-            ))
+            jobs.append(
+                (
+                    f"{projection}_overlay",
+                    lambda p=projection: _plots.OverlayPlot(
+                        projection_name=p,
+                        path=self.path,
+                        reference_path=self.reference_path,
+                        fetcher=f,
+                    ),
+                )
+            )
+            jobs.append(
+                (
+                    f"{projection}_coordinate_density",
+                    lambda p=projection: _plots.CoordinateDensityPlot(
+                        projection_name=p,
+                        path=self.path,
+                        reference_path=self.reference_path,
+                        fetcher=f,
+                    ),
+                )
+            )
         return jobs

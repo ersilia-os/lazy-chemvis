@@ -1,10 +1,10 @@
-import os
 import gc
 import json
+import os
 import shutil
 import time
-import numpy as np
 
+import numpy as np
 from rdkit import RDLogger
 
 from ..helpers.cache import cache_key, invalidate, mismatch_reason, write_key
@@ -19,12 +19,26 @@ logger = get_logger(__name__)
 
 
 class CheMeleonFeaturizer(object):
+    """
+    CheMeleon embeddings for the reference set, served through Ersilia (``eos9o72``).
 
-    def __init__(self, dir_path: str, model_id: str = 'eos9o72'):
+    Molecules are run in batches whose results are cached on disk, so an
+    interrupted fit resumes where it stopped. Used at fit time only: the t-SNE
+    surrogate replaces it when projecting new molecules.
+
+    Parameters
+    ----------
+    dir_path : str
+        Reference space directory; outputs go to ``<dir_path>/CheMeleon``.
+    model_id : str, default='eos9o72'
+        Ersilia model identifier.
+    """
+
+    def __init__(self, dir_path: str, model_id: str = "eos9o72"):
         if not os.path.exists(dir_path):
             os.makedirs(dir_path)
 
-        self.featurizer_name = 'CheMeleon'
+        self.featurizer_name = "CheMeleon"
         self._model_id = model_id
         self._model_instance = None
         self.dir_path = os.path.abspath(dir_path)
@@ -88,7 +102,7 @@ class CheMeleonFeaturizer(object):
                     bar.set_note(f"batch {batch_idx} cached")
                     continue
 
-                current_batch_smiles = smiles_list[i: i + batch_size]
+                current_batch_smiles = smiles_list[i : i + batch_size]
                 bar.set_note(f"molecules {i:,}–{i + len(current_batch_smiles):,}")
                 self._run_batch(batch_idx, i, current_batch_smiles, batch_file)
 
@@ -176,17 +190,25 @@ class CheMeleonFeaturizer(object):
 
         # Collect batch file paths in sorted order
         all_files = sorted(
-            [os.path.join(temp_dir, f) for f in os.listdir(temp_dir) if f.endswith('.npy')],
-            key=lambda x: int(os.path.basename(x).split('_')[1].split('.')[0])
+            [
+                os.path.join(temp_dir, f)
+                for f in os.listdir(temp_dir)
+                if f.endswith(".npy")
+            ],
+            key=lambda x: int(os.path.basename(x).split("_")[1].split(".")[0]),
         )
         if not all_files:
-            raise ValueError("No batch files found. Ensure that _compute_fps ran successfully.")
+            raise ValueError(
+                "No batch files found. Ensure that _compute_fps ran successfully."
+            )
 
         # Determine total shape without loading data (avoids doubling peak memory)
-        shapes = [np.load(f, mmap_mode='r').shape for f in all_files]
+        shapes = [np.load(f, mmap_mode="r").shape for f in all_files]
         n_total = sum(s[0] for s in shapes)
         n_feat = shapes[0][1]
-        logger.info(f"Merging {len(all_files)} batch files → {n_total:,} molecules × {n_feat} features")
+        logger.info(
+            f"Merging {len(all_files)} batch files → {n_total:,} molecules × {n_feat} features"
+        )
 
         # Pre-allocate and fill incrementally — peak memory = final array + one batch
         self.X = np.empty((n_total, n_feat), dtype=np.float32)
@@ -194,7 +216,7 @@ class CheMeleonFeaturizer(object):
         for f, shape in zip(all_files, shapes):
             batch = np.load(f)
             n = shape[0]
-            self.X[row: row + n] = batch
+            self.X[row : row + n] = batch
             row += n
             del batch
             gc.collect()
@@ -237,7 +259,7 @@ class CheMeleonFeaturizer(object):
         metadata = {
             "featurizer": self.featurizer_name,
             "model_id": self._model_id,
-            "dir_path": self.dir_path
+            "dir_path": self.dir_path,
         }
 
         with open(os.path.join(desc_path, "featurizer.json"), "w") as f:

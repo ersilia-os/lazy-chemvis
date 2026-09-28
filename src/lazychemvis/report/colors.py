@@ -12,10 +12,10 @@ _named = stylia.NamedColors()
 
 # Semantic key → stylia colour name.
 _SEMANTIC = {
-    "reference": "silver",     # the grey background landscape
-    "overlay": "periwinkle",   # newly projected molecules
-    "truth": "cobalt",         # ground-truth coordinates in validation figures
-    "prediction": "crimson",   # surrogate-predicted coordinates
+    "reference": "silver",  # the grey background landscape
+    "overlay": "periwinkle",  # newly projected molecules
+    "truth": "cobalt",  # ground-truth coordinates in validation figures
+    "prediction": "crimson",  # surrogate-predicted coordinates
     "good": "lime",
     "warn": "amber",
     "bad": "crimson",

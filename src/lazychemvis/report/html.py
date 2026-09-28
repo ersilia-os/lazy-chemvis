@@ -13,11 +13,11 @@ The layout is a sticky sidebar plus a responsive card grid, printable via an
 import html as _html
 import os
 
+from ..helpers.logger import get_logger
 from . import load_figure_cells
 from .colors import PROJECTION_COLORS, hexcol
 from .fetcher import PROJECTION_DESCRIPTIONS, PROJECTION_LABELS, PROJECTIONS
 from .perf import summarise
-from ..helpers.logger import get_logger
 
 logger = get_logger(__name__)
 
@@ -150,6 +150,7 @@ document.querySelectorAll('.carousel').forEach(function(car){
 # Small helpers
 # ----------------------------------------------------------------------
 
+
 def _esc(value):
     """HTML-escape a value for safe interpolation."""
     return _html.escape(str(value), quote=True)
@@ -197,10 +198,11 @@ def _card(report_dir, stem, cells_map, title=None, wide=False):
     pdf_rel = f"pdf/{stem}.pdf"
     pdf_link = (
         f"<a href='{_esc(pdf_rel)}'>pdf</a>"
-        if os.path.exists(os.path.join(report_dir, "pdf", f"{stem}.pdf")) else ""
+        if os.path.exists(os.path.join(report_dir, "pdf", f"{stem}.pdf"))
+        else ""
     )
     return f"""
-      <div class="card{' wide' if wide else ''}">
+      <div class="card{" wide" if wide else ""}">
         <h4>{_esc(title)}</h4>
         <div class="figwrap"><img src="{_esc(_img_src(stem))}" alt="{_esc(title)}"></div>
         <div class="foot"><span>{_esc(_dim_badge(cells))}</span>{pdf_link}</div>
@@ -238,7 +240,8 @@ def _kv(rows):
     """A responsive key/value grid."""
     cells = "".join(
         f"<div><span class='k'>{_esc(k)}</span>{v}</div>"
-        for k, v in rows if v is not None
+        for k, v in rows
+        if v is not None
     )
     return f"<div class='kv'>{cells}</div>"
 
@@ -266,13 +269,16 @@ def _table(headers, rows, numeric_from=1):
             for i, c in enumerate(row)
         )
         body += f"<tr>{tds}</tr>"
-    return (f"<div class='tablewrap'><table class='data'><thead><tr>{head}</tr></thead>"
-            f"<tbody>{body}</tbody></table></div>")
+    return (
+        f"<div class='tablewrap'><table class='data'><thead><tr>{head}</tr></thead>"
+        f"<tbody>{body}</tbody></table></div>"
+    )
 
 
 # ----------------------------------------------------------------------
 # Sections
 # ----------------------------------------------------------------------
+
 
 def _config_section(manifest, fetcher):
     """Run configuration: what was fitted, from what, with which parameters."""
@@ -283,7 +289,10 @@ def _config_section(manifest, fetcher):
     rows = [
         ("molecules", f"{n_valid:,}" if n_valid else "—"),
         ("invalid dropped", f"{n_invalid:,}" if n_invalid is not None else "—"),
-        ("input", f"<code>{_esc(os.path.basename(manifest.get('lib_input', '—')))}</code>"),
+        (
+            "input",
+            f"<code>{_esc(os.path.basename(manifest.get('lib_input', '—')))}</code>",
+        ),
         ("lazychemvis", _esc(versions.get("lazychemvis", "—"))),
         ("rdkit", _esc(versions.get("rdkit", "—"))),
         ("low memory", "yes" if manifest.get("low_memory") else "no"),
@@ -296,9 +305,13 @@ def _config_section(manifest, fetcher):
         if not cfg:
             continue
         params = ", ".join(f"{k} = {v}" for k, v in cfg.items())
-        param_rows.append((f"{_projection_badge(p)} "
-                           f"<span class='pill'>{_esc(PROJECTION_DESCRIPTIONS.get(p, ''))}</span>",
-                           params))
+        param_rows.append(
+            (
+                f"{_projection_badge(p)} "
+                f"<span class='pill'>{_esc(PROJECTION_DESCRIPTIONS.get(p, ''))}</span>",
+                params,
+            )
+        )
     if param_rows:
         per_projection = _table(
             ["Projection", "Parameters"],
@@ -322,8 +335,12 @@ def _landscape_section(report_dir, cells_map, fetcher):
     # the card therefore shows only the pipeline description, to avoid repeating the
     # projection name twice in the same card.
     cards = "".join(
-        _card(report_dir, f"{p}_reference_space", cells_map,
-              title=PROJECTION_DESCRIPTIONS.get(p, PROJECTION_LABELS.get(p, p)))
+        _card(
+            report_dir,
+            f"{p}_reference_space",
+            cells_map,
+            title=PROJECTION_DESCRIPTIONS.get(p, PROJECTION_LABELS.get(p, p)),
+        )
         for p in PROJECTIONS
     )
     if not cards.strip():
@@ -346,43 +363,71 @@ def _surrogate_section(report_dir, cells_map, fetcher):
         if m is None:
             continue
         label = PROJECTION_LABELS.get(projection, projection)
-        summary_rows.append([
-            _projection_badge(projection),
-            f"{m['r2_mean']:.4f} ± {m['r2_std']:.4f}",
-            f"{m['rmse_mean']:.4f} ± {m['rmse_std']:.4f}",
-            f"{m['mae_mean']:.4f} ± {m['mae_std']:.4f}",
-            f"{m['euclidean_mean']:.4f} ± {m['euclidean_std']:.4f}",
-            _verdict(m["quality"], m["quality_class"]),
-        ])
+        summary_rows.append(
+            [
+                _projection_badge(projection),
+                f"{m['r2_mean']:.4f} ± {m['r2_std']:.4f}",
+                f"{m['rmse_mean']:.4f} ± {m['rmse_std']:.4f}",
+                f"{m['mae_mean']:.4f} ± {m['mae_std']:.4f}",
+                f"{m['euclidean_mean']:.4f} ± {m['euclidean_std']:.4f}",
+                _verdict(m["quality"], m["quality_class"]),
+            ]
+        )
 
         fold_rows = [
-            [str(i + 1), f"{m['r2_per_fold'][i]:.4f}", f"{m['euclidean_per_fold'][i]:.4f}"]
+            [
+                str(i + 1),
+                f"{m['r2_per_fold'][i]:.4f}",
+                f"{m['euclidean_per_fold'][i]:.4f}",
+            ]
             for i in range(m["cv_folds"])
         ]
-        stability = ("" if m["stable"] else
-                     f"<div class='note caveat'>High variance across folds "
-                     f"(R² std = {m['r2_std']:.4f}).</div>")
+        stability = (
+            ""
+            if m["stable"]
+            else f"<div class='note caveat'>High variance across folds "
+            f"(R² std = {m['r2_std']:.4f}).</div>"
+        )
 
         # Ground truth vs prediction maps go last, after the per-axis diagnostics.
-        stems = [f"{projection}_fold_{i + 1}_{kind}"
-                 for kind in ("distributions", "zones", "comparison")
-                 for i in range(m["cv_folds"])]
+        stems = [
+            f"{projection}_fold_{i + 1}_{kind}"
+            for kind in ("distributions", "zones", "comparison")
+            for i in range(m["cv_folds"])
+        ]
 
         blocks.append(f"""
-      <h4 style="margin:22px 0 8px">{_projection_badge(projection)} {_esc(label)} surrogate</h4>
-      {_kv([
-          ("R² (mean ± std)", f"{m['r2_mean']:.4f} ± {m['r2_std']:.4f}"),
-          ("R² spread (± 1 std)", f"[{m['spread_low']:.4f}, {m['spread_high']:.4f}]"),
-          ("mean euclidean error", f"{m['euclidean_mean']:.4f} ± {m['euclidean_std']:.4f}"),
-          ("folds", str(m["cv_folds"])),
-          ("overall quality", _verdict(m["quality"], m["quality_class"])),
-          ("placement accuracy", _verdict(m["accuracy"], m["accuracy_class"])),
-      ])}
+      <h4 style="margin:22px 0 8px">{_projection_badge(projection)} {
+            _esc(label)
+        } surrogate</h4>
+      {
+            _kv(
+                [
+                    ("R² (mean ± std)", f"{m['r2_mean']:.4f} ± {m['r2_std']:.4f}"),
+                    (
+                        "R² spread (± 1 std)",
+                        f"[{m['spread_low']:.4f}, {m['spread_high']:.4f}]",
+                    ),
+                    (
+                        "mean euclidean error",
+                        f"{m['euclidean_mean']:.4f} ± {m['euclidean_std']:.4f}",
+                    ),
+                    ("folds", str(m["cv_folds"])),
+                    ("overall quality", _verdict(m["quality"], m["quality_class"])),
+                    (
+                        "placement accuracy",
+                        _verdict(m["accuracy"], m["accuracy_class"]),
+                    ),
+                ]
+            )
+        }
       {stability}
       <div style="height:12px"></div>
       {_table(["Fold", "R²", "Euclidean error"], fold_rows)}
       <div style="height:14px"></div>
-      <div class="grid">{_carousel(report_dir, f"{label} per-fold validation", stems, cells_map)}</div>""")
+      <div class="grid">{
+            _carousel(report_dir, f"{label} per-fold validation", stems, cells_map)
+        }</div>""")
 
     if not blocks:
         return ""
@@ -404,7 +449,7 @@ def _surrogate_section(report_dir, cells_map, fetcher):
       {overall}
       <div style="height:16px"></div>
       <div class="grid">{figures}</div>
-      {''.join(blocks)}
+      {"".join(blocks)}
     </section>"""
 
 
@@ -444,13 +489,22 @@ def _transform_input_section(manifest, fetcher):
     <section id="input">
       <h3>Input</h3>
       <p class="lede">Molecules projected onto the pretrained reference space.</p>
-      {_kv([
-          ("molecules", f"{n:,}"),
-          ("input", f"<code>{_esc(os.path.basename(manifest.get('lib_input', '—')))}</code>"),
-          ("reference space",
-           f"<code>{_esc(os.path.basename(manifest.get('reference_path', '—')))}</code>"),
-          ("unparseable SMILES", f"{n_bad:,}" if n_bad is not None else None),
-      ])}
+      {
+        _kv(
+            [
+                ("molecules", f"{n:,}"),
+                (
+                    "input",
+                    f"<code>{_esc(os.path.basename(manifest.get('lib_input', '—')))}</code>",
+                ),
+                (
+                    "reference space",
+                    f"<code>{_esc(os.path.basename(manifest.get('reference_path', '—')))}</code>",
+                ),
+                ("unparseable SMILES", f"{n_bad:,}" if n_bad is not None else None),
+            ]
+        )
+    }
       <div style="height:14px"></div>
       {note}
     </section>"""
@@ -459,8 +513,12 @@ def _transform_input_section(manifest, fetcher):
 def _overlay_section(report_dir, cells_map):
     """Overlay figures plus coordinate coverage."""
     overlays = "".join(
-        _card(report_dir, f"{p}_overlay", cells_map,
-              title=f"{PROJECTION_LABELS.get(p, p)} overlay")
+        _card(
+            report_dir,
+            f"{p}_overlay",
+            cells_map,
+            title=f"{PROJECTION_LABELS.get(p, p)} overlay",
+        )
         for p in PROJECTIONS
     )
     density = "".join(
@@ -488,7 +546,7 @@ def _coordinates_section(fetcher, top_n=25):
 
     def fmt(v):
         if isinstance(v, float):
-            return "—" if v != v else f"{v:.4f}"   # NaN check without importing numpy
+            return "—" if v != v else f"{v:.4f}"  # NaN check without importing numpy
         return _esc(v)
 
     rows = [[fmt(v) for v in rec] for rec in head.itertuples(index=False)]
@@ -504,6 +562,7 @@ def _coordinates_section(fetcher, top_n=25):
 # ----------------------------------------------------------------------
 # Entry point
 # ----------------------------------------------------------------------
+
 
 def write_html_report(output_dir, mode="fit", fetcher=None):
     """
@@ -542,12 +601,14 @@ def write_html_report(output_dir, mode="fit", fetcher=None):
             ("surrogate-quality", "Surrogate quality"),
             ("performance", "Performance"),
         ]
-        body = "".join([
-            _config_section(manifest, fetcher),
-            _landscape_section(report_dir, cells_map, fetcher),
-            _surrogate_section(report_dir, cells_map, fetcher),
-            _performance_section(report_dir, cells_map, fetcher),
-        ])
+        body = "".join(
+            [
+                _config_section(manifest, fetcher),
+                _landscape_section(report_dir, cells_map, fetcher),
+                _surrogate_section(report_dir, cells_map, fetcher),
+                _performance_section(report_dir, cells_map, fetcher),
+            ]
+        )
     else:
         title = "Chemical space projection report"
         subtitle = "New molecules projected onto a pretrained reference space"
@@ -556,15 +617,15 @@ def write_html_report(output_dir, mode="fit", fetcher=None):
             ("overlays", "Where they landed"),
             ("coordinates", "Coordinates"),
         ]
-        body = "".join([
-            _transform_input_section(manifest, fetcher),
-            _overlay_section(report_dir, cells_map),
-            _coordinates_section(fetcher),
-        ])
+        body = "".join(
+            [
+                _transform_input_section(manifest, fetcher),
+                _overlay_section(report_dir, cells_map),
+                _coordinates_section(fetcher),
+            ]
+        )
 
-    nav_html = "".join(
-        f"<li><a href='#{a}'>{_esc(t)}</a></li>" for a, t in nav
-    )
+    nav_html = "".join(f"<li><a href='#{a}'>{_esc(t)}</a></li>" for a, t in nav)
     # A transform report counts the molecules that were *projected*; falling back to the
     # reference size here would report the reference space's molecule count instead.
     if mode == "fit":
@@ -598,7 +659,7 @@ def write_html_report(output_dir, mode="fit", fetcher=None):
   <main>
     <header class="run">
       <h2>{_esc(title)}</h2>
-      <div class="meta">{_esc(' · '.join(meta_bits))}</div>
+      <div class="meta">{_esc(" · ".join(meta_bits))}</div>
     </header>
     {body}
     <footer>

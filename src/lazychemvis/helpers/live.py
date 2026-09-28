@@ -43,7 +43,9 @@ class LiveProgressBar(object):
 
     Examples
     --------
-    >>> with LiveProgressBar("ECFP", total=50).live() as p:
+    >>> with LiveProgressBar(
+    ...     "ECFP", total=50
+    ... ).live() as p:
     ...     for chunk in chunks:
     ...         p.set_note("batch 3")
     ...         p.advance()
@@ -119,7 +121,11 @@ class LiveProgressBar(object):
 
         try:
             with Live(
-                self, console=console, transient=True, refresh_per_second=8, auto_refresh=True
+                self,
+                console=console,
+                transient=True,
+                refresh_per_second=8,
+                auto_refresh=True,
             ) as live:
                 self._live = live
                 yield self

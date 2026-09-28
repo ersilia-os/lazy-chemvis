@@ -14,12 +14,11 @@ cannot place a molecule between known regions.
 """
 
 import os
-import numpy as np
 from typing import List
 
-from rdkit import Chem
-from rdkit import RDLogger
+import numpy as np
 from FPSim2 import FPSim2Engine
+from rdkit import Chem, RDLogger
 
 from ..helpers.logger import get_logger
 
@@ -37,6 +36,13 @@ _THRESHOLD = 0.0
 
 
 class TMAPArtifact:
+    """
+    Place new molecules on a fitted TMAP landscape by nearest-neighbour inheritance.
+
+    Loads the FPSim2 database and reference coordinates written by
+    :class:`~lazychemvis.surrogates.tmap.TMAPSurrogate`.
+    """
+
     def __init__(self, dir_name: str, n_workers: int = 1):
         """
         Parameters
@@ -96,9 +102,7 @@ class TMAPArtifact:
 
             # top_k(k=1) rather than similarity(): the latter returns and sorts
             # every molecule in the reference set just to read the first row.
-            results = self.engine.top_k(
-                mol, 1, _THRESHOLD, n_workers=self.n_workers
-            )
+            results = self.engine.top_k(mol, 1, _THRESHOLD, n_workers=self.n_workers)
             if len(results) == 0:
                 failures.append((i, smi))
                 continue
@@ -107,7 +111,9 @@ class TMAPArtifact:
 
         if failures:
             n_failed = len(failures)
-            examples = ", ".join(f"row {i + 2}: {smi!r}" for i, smi in failures[:_N_EXAMPLES])
+            examples = ", ".join(
+                f"row {i + 2}: {smi!r}" for i, smi in failures[:_N_EXAMPLES]
+            )
             if n_failed > _N_EXAMPLES:
                 examples += f", … (+{n_failed - _N_EXAMPLES:,} more)"
             logger.warning(

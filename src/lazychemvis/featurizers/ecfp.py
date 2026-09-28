@@ -6,14 +6,13 @@ fingerprints from SMILES. The fingerprint settings and the reference matrix can
 be saved and reloaded reproducibly.
 """
 
-import os
 import json
+import os
 import shutil
-import numpy as np
 
-from rdkit import Chem
+import numpy as np
+from rdkit import Chem, RDLogger
 from rdkit.Chem import AllChem
-from rdkit import RDLogger
 
 from ..helpers.cache import cache_key, invalidate, mismatch_reason, write_key
 from ..helpers.logger import get_logger
@@ -120,7 +119,9 @@ class ECFPFeaturizer(object):
         self._key = self._cache_key(smiles_list)
         self._from_cache = False
 
-        reason = mismatch_reason(desc_path, self._key) if reuse else "--no-cache was given"
+        reason = (
+            mismatch_reason(desc_path, self._key) if reuse else "--no-cache was given"
+        )
         if reason is None:
             logger.info(f"Reusing cached fingerprints at {desc_path}")
             self.X = np.load(os.path.join(desc_path, "X.npy"))

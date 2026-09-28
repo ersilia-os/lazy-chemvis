@@ -1,6 +1,7 @@
 import os
 import re
 import subprocess
+
 import numpy as np
 
 from ..helpers.logger import get_logger
@@ -20,6 +21,7 @@ def _parse_progress_pct(line: str):
         return float(match.group(1))
     except ValueError:  # pragma: no cover - defensive
         return None
+
 
 # Layout defaults, duplicated from tmap_base so that this module (which runs in the
 # main environment) does not need to import the TMAP-only driver script.
@@ -100,7 +102,9 @@ def verify_tmap_env(tmap_env: str, timeout: int = 120) -> str:
     try:
         result = subprocess.run(
             [python_exe, "-c", "import tmap; print(tmap.__name__)"],
-            capture_output=True, text=True, timeout=timeout,
+            capture_output=True,
+            text=True,
+            timeout=timeout,
         )
     except subprocess.TimeoutExpired as e:
         raise RuntimeError(
@@ -122,8 +126,16 @@ class TMAPProjector(object):
     Perform TMAP projection on ECFP fingerprint features and scale the output.
     """
 
-    def __init__(self, dir_path: str, k: int = None, kc: int = None, num_threads: int = 4,
-                 low_memory: bool = False, n_permutations: int = 128, batch_size: int = 10000):
+    def __init__(
+        self,
+        dir_path: str,
+        k: int = None,
+        kc: int = None,
+        num_threads: int = 4,
+        low_memory: bool = False,
+        n_permutations: int = 128,
+        batch_size: int = 10000,
+    ):
         """
         Create a TMAPProjector.
 
@@ -202,12 +214,18 @@ class TMAPProjector(object):
         cmd = [
             python_exe,
             script_path,
-            "--input", input_path,
-            "--output_dir", output_dir,
-            "--n_permutations", str(self.n_permutations),
-            "--batch_size", str(self.batch_size),
-            "--k", str(self.k),
-            "--kc", str(self.kc),
+            "--input",
+            input_path,
+            "--output_dir",
+            output_dir,
+            "--n_permutations",
+            str(self.n_permutations),
+            "--batch_size",
+            str(self.batch_size),
+            "--k",
+            str(self.k),
+            "--kc",
+            str(self.kc),
         ]
 
         # Add low-memory flag if enabled
@@ -260,8 +278,11 @@ class TMAPProjector(object):
         progress = LiveProgressBar("TMAP layout", total=100, show_bar=True)
 
         proc = subprocess.Popen(
-            cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-            text=True, bufsize=1,
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            bufsize=1,
         )
         try:
             with progress.live() as bar:
@@ -275,7 +296,9 @@ class TMAPProjector(object):
                     pct = _parse_progress_pct(line)
                     if pct is not None:
                         bar.done = min(100, int(pct))
-                    note = line.replace("[TMAP LOW-MEM]", "").replace("[TMAP]", "").strip()
+                    note = (
+                        line.replace("[TMAP LOW-MEM]", "").replace("[TMAP]", "").strip()
+                    )
                     if note:
                         bar.set_note(note[:70])
                 proc.wait()

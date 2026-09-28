@@ -15,8 +15,8 @@ import json
 import os
 
 from .helpers import logger as log_manager
-from .helpers.logger import get_logger
 from .helpers.libraries import load_lib_input
+from .helpers.logger import get_logger
 from .helpers.tracker import PipelineTracker
 from .helpers.validation import validate_smiles
 
@@ -54,7 +54,8 @@ def check_fit_dependencies():
         Listing every missing distribution and the command that installs them.
     """
     missing = [
-        dist for module, dist in FIT_DEPENDENCIES.items()
+        dist
+        for module, dist in FIT_DEPENDENCIES.items()
         if importlib.util.find_spec(module) is None
     ]
     if missing:
@@ -70,9 +71,16 @@ class Pipeline(object):
     Complete processing pipeline for computing chemical space projections.
     """
 
-    def __init__(self, lib_input: str, dir_path: str, tmap_env: str,
-                 no_cache: bool = False, low_memory: bool = False,
-                 verbose: bool = False, no_report: bool = False):
+    def __init__(
+        self,
+        lib_input: str,
+        dir_path: str,
+        tmap_env: str,
+        no_cache: bool = False,
+        low_memory: bool = False,
+        verbose: bool = False,
+        no_report: bool = False,
+    ):
         """
         Initialize the pipeline.
 
@@ -117,8 +125,8 @@ class Pipeline(object):
         """Execute the descriptor → PCA → surrogate → plot sequence."""
         from .featurizers.rdkit_descriptor import RDKitDescriptor
         from .projectors.pca import PCAProjector
-        from .surrogates.pca import PCASurrogate
         from .report.plots import ReferenceLandscapePlot
+        from .surrogates.pca import PCASurrogate
 
         self.tracker.start("pca", "RDKit descriptors → PCA")
 
@@ -176,14 +184,17 @@ class Pipeline(object):
             dir_path=self.dir_path,
             low_memory=self.low_memory,
             n_permutations=64 if self.low_memory else 128,
-            batch_size=5000 if self.low_memory else 10000
+            batch_size=5000 if self.low_memory else 10000,
         )
         tmap_proj.fit(self.tmap_env)
-        self.manifest["tmap"].update({
-            "k": tmap_proj.k, "kc": tmap_proj.kc,
-            "n_permutations": tmap_proj.n_permutations,
-            "low_memory": self.low_memory,
-        })
+        self.manifest["tmap"].update(
+            {
+                "k": tmap_proj.k,
+                "kc": tmap_proj.kc,
+                "n_permutations": tmap_proj.n_permutations,
+                "low_memory": self.low_memory,
+            }
+        )
 
         self.tracker.substep("Plotting reference landscape")
         ReferenceLandscapePlot(projection_name="tmap", path=self.dir_path).save()
@@ -198,12 +209,13 @@ class Pipeline(object):
     def _tsne_step(self, smiles_list):
         """Execute the CheMeleon → t-SNE → surrogate → plot sequence with memory management."""
         from .featurizers.chemeleon import CheMeleonFeaturizer
+
         # Ersilia resets loguru's handlers at import time; re-assert ours or the rest
         # of the run would be silent and nothing more would reach the log file.
         log_manager.configure()
         from .projectors.tsne_projector import TSNEProjector
-        from .surrogates.tsne import TSNESurrogate
         from .report.plots import ReferenceLandscapePlot
+        from .surrogates.tsne import TSNESurrogate
 
         self.tracker.start("tsne", "CheMeleon → t-SNE")
 
@@ -213,7 +225,7 @@ class Pipeline(object):
         featurizer.save()
         self._record_reuse(featurizer)
         self.manifest.setdefault("tsne", {})["model_id"] = featurizer._model_id
-        if hasattr(featurizer, 'cleanup'):
+        if hasattr(featurizer, "cleanup"):
             featurizer.cleanup()
         del featurizer
         gc.collect()
@@ -242,11 +254,12 @@ class Pipeline(object):
     def _umap_step(self, smiles_list):
         """Execute the CLAMP → UMAP → surrogate → plot sequence with memory management."""
         from .featurizers.clamp import CLAMPFeaturizer
+
         # See the note in _tsne_step: Ersilia wipes loguru's handlers on import.
         log_manager.configure()
         from .projectors.umap_projector import UMAPProjector
-        from .surrogates.umap import UMAPSurrogate
         from .report.plots import ReferenceLandscapePlot
+        from .surrogates.umap import UMAPSurrogate
 
         self.tracker.start("umap", "CLAMP → UMAP")
 
@@ -256,7 +269,7 @@ class Pipeline(object):
         featurizer.save()
         self._record_reuse(featurizer)
         self.manifest.setdefault("umap", {})["model_id"] = featurizer._model_id
-        if hasattr(featurizer, 'cleanup'):
+        if hasattr(featurizer, "cleanup"):
             featurizer.cleanup()
         del featurizer
         gc.collect()
@@ -265,12 +278,14 @@ class Pipeline(object):
         self.tracker.substep("UMAP projection")
         umap_proj = UMAPProjector(dir_path=self.dir_path, verbose=self.verbose)
         umap_proj.fit()
-        self.manifest["umap"].update({
-            "n_neighbors": umap_proj.n_neighbors,
-            "min_dist": umap_proj.min_dist,
-            "metric": umap_proj.metric,
-        })
-        if hasattr(umap_proj, 'cleanup'):
+        self.manifest["umap"].update(
+            {
+                "n_neighbors": umap_proj.n_neighbors,
+                "min_dist": umap_proj.min_dist,
+                "metric": umap_proj.metric,
+            }
+        )
+        if hasattr(umap_proj, "cleanup"):
             umap_proj.cleanup()
         del umap_proj
         gc.collect()
@@ -294,8 +309,10 @@ class Pipeline(object):
             return None
         return [
             ("R²", f"{metrics['r2_mean']:.4f} ± {metrics['r2_std']:.4f}"),
-            ("Euclidean error", f"{metrics['euclidean_mean']:.4f} ± "
-                               f"{metrics['euclidean_std']:.4f}"),
+            (
+                "Euclidean error",
+                f"{metrics['euclidean_mean']:.4f} ± {metrics['euclidean_std']:.4f}",
+            ),
         ]
 
     def _write_manifest(self, n_input, n_valid):
@@ -304,25 +321,28 @@ class Pipeline(object):
 
         try:
             from importlib.metadata import version
+
             pkg_version = version("lazychemvis")
         except Exception:
             pkg_version = "unknown"
 
-        self.manifest.update({
-            "mode": "fit",
-            "lib_input": os.path.abspath(self.lib_input),
-            "n_input": n_input,
-            "n_valid": n_valid,
-            "n_invalid": n_input - n_valid,
-            "low_memory": self.low_memory,
-            "no_cache": self.no_cache,
-            "cache_reused": dict(self.cache_reused),
-            "timings": dict(self.tracker.timings),
-            "versions": {
-                "lazychemvis": pkg_version,
-                "rdkit": Chem.rdBase.rdkitVersion,
-            },
-        })
+        self.manifest.update(
+            {
+                "mode": "fit",
+                "lib_input": os.path.abspath(self.lib_input),
+                "n_input": n_input,
+                "n_valid": n_valid,
+                "n_invalid": n_input - n_valid,
+                "low_memory": self.low_memory,
+                "no_cache": self.no_cache,
+                "cache_reused": dict(self.cache_reused),
+                "timings": dict(self.tracker.timings),
+                "versions": {
+                    "lazychemvis": pkg_version,
+                    "rdkit": Chem.rdBase.rdkitVersion,
+                },
+            }
+        )
         path = os.path.join(self.dir_path, RUN_MANIFEST)
         with open(path, "w") as f:
             json.dump(self.manifest, f, indent=2)
@@ -340,6 +360,7 @@ class Pipeline(object):
         # ECFP featurization, so without this check a mistyped --tmap-env is only
         # discovered hours into a large fit.
         from .projectors.tmap_projector import verify_tmap_env
+
         verify_tmap_env(self.tmap_env)
 
         smiles_list = load_lib_input(self.lib_input)

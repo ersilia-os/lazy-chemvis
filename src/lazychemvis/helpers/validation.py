@@ -9,8 +9,7 @@ guarantees that alignment instead of leaving each featurizer to apply its own
 policy for unparseable input.
 """
 
-from rdkit import Chem
-from rdkit import RDLogger
+from rdkit import Chem, RDLogger
 
 from .logger import get_logger
 

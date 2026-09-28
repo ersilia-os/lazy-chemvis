@@ -13,25 +13,24 @@ Subclasses set :attr:`surrogate_name`, :attr:`projection_name` and :attr:`label`
 implement :meth:`_load_targets`, and may override :meth:`_align_features`.
 """
 
-import os
 import gc
 import json
+import os
+
 import joblib
-
 import numpy as np
-import pandas as pd
 import optuna
-
-from xgboost import XGBRegressor
-from sklearn.multioutput import MultiOutputRegressor
+import pandas as pd
+from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
 from sklearn.model_selection import KFold
-from sklearn.metrics import r2_score, mean_squared_error, mean_absolute_error
+from sklearn.multioutput import MultiOutputRegressor
+from xgboost import XGBRegressor
 
 from ..featurizers.ecfp import ECFPFeaturizer
-from ..report import plots as report_plots
-from ..report.perf import log_cv_results
 from ..helpers.live import LiveProgressBar
 from ..helpers.logger import get_logger
+from ..report import plots as report_plots
+from ..report.perf import log_cv_results
 
 logger = get_logger(__name__)
 
@@ -158,7 +157,9 @@ class XGBSurrogate(object):
 
         if X.shape[0] != y_coords.shape[0]:
             logger.error(f"Dimension mismatch: X={X.shape[0]}, Y={y_coords.shape[0]}")
-            raise ValueError(f"Dimension mismatch: X={X.shape[0]}, Y={y_coords.shape[0]}")
+            raise ValueError(
+                f"Dimension mismatch: X={X.shape[0]}, Y={y_coords.shape[0]}"
+            )
 
         # Release the featurizer wrapper — the arrays live on via X and y_coords
         del ecfp_feat
@@ -169,7 +170,9 @@ class XGBSurrogate(object):
             logger.info("Phase 0 — hyperparameter optimisation (Optuna)")
             if X.shape[0] > OPTUNA_SUBSAMPLE_ABOVE:
                 n_optuna = min(OPTUNA_SUBSAMPLE_SIZE, X.shape[0])
-                logger.info(f"Large dataset detected — subsampling {n_optuna:,} molecules for Optuna.")
+                logger.info(
+                    f"Large dataset detected — subsampling {n_optuna:,} molecules for Optuna."
+                )
                 rng = np.random.default_rng(self.random_state)
                 indices = rng.choice(X.shape[0], n_optuna, replace=False)
                 self.best_params = self._run_optuna_study(X[indices], y_coords[indices])
@@ -177,7 +180,9 @@ class XGBSurrogate(object):
             else:
                 self.best_params = self._run_optuna_study(X, y_coords)
         else:
-            logger.info("Skipping hyperparameter optimisation. Using default parameters.")
+            logger.info(
+                "Skipping hyperparameter optimisation. Using default parameters."
+            )
 
         # PHASE 1: CROSS-VALIDATION
         if self.evaluate and self.cv_folds > 0:
@@ -185,7 +190,9 @@ class XGBSurrogate(object):
             self._run_cross_validation(X, y_coords)
 
         # PHASE 2: PRODUCTION MODEL
-        logger.info(f"Phase 2 — production model on 100% of the data ({X.shape[0]:,} molecules)")
+        logger.info(
+            f"Phase 2 — production model on 100% of the data ({X.shape[0]:,} molecules)"
+        )
         base_xgb = XGBRegressor(**self.best_params)
         self.model = MultiOutputRegressor(base_xgb)
         self.model.fit(X, y_coords)
@@ -210,7 +217,9 @@ class XGBSurrogate(object):
             param = {
                 "n_estimators": trial.suggest_int("n_estimators", 200, 800),
                 "max_depth": trial.suggest_int("max_depth", 5, 12),
-                "learning_rate": trial.suggest_float("learning_rate", 0.01, 0.15, log=True),
+                "learning_rate": trial.suggest_float(
+                    "learning_rate", 0.01, 0.15, log=True
+                ),
                 "subsample": trial.suggest_float("subsample", 0.7, 1.0),
                 "colsample_bytree": trial.suggest_float("colsample_bytree", 0.7, 1.0),
                 "tree_method": "hist",
@@ -218,7 +227,11 @@ class XGBSurrogate(object):
                 "n_jobs": -1,
                 "random_state": self.random_state,
             }
-            cv = KFold(n_splits=OPTUNA_INNER_FOLDS, shuffle=True, random_state=self.random_state)
+            cv = KFold(
+                n_splits=OPTUNA_INNER_FOLDS,
+                shuffle=True,
+                random_state=self.random_state,
+            )
             rmses = []
             for fold_idx, (t_idx, v_idx) in enumerate(cv.split(X)):
                 model = MultiOutputRegressor(XGBRegressor(**param))
@@ -243,11 +256,17 @@ class XGBSurrogate(object):
 
         progress = LiveProgressBar(f"{self.label} Optuna trials", total=n_trials)
         with progress.live() as bar:
+
             def _callback(study, trial):
                 bar.advance()
                 bar.set_note(f"best RMSE {study.best_value:.4f}")
 
-            study.optimize(objective, n_trials=n_trials, callbacks=[_callback], show_progress_bar=False)
+            study.optimize(
+                objective,
+                n_trials=n_trials,
+                callbacks=[_callback],
+                show_progress_bar=False,
+            )
 
         logger.success(f"Optimisation complete — best RMSE: {study.best_value:.4f}")
 
@@ -266,7 +285,9 @@ class XGBSurrogate(object):
 
     def _run_cross_validation(self, X: np.ndarray, y_true: np.ndarray) -> None:
         """K-Fold CV loop: computes metrics, saves CSVs, and delegates plotting."""
-        val_dir = os.path.join(self.dir_path, self.surrogate_name, "validation_artifacts")
+        val_dir = os.path.join(
+            self.dir_path, self.surrogate_name, "validation_artifacts"
+        )
         os.makedirs(val_dir, exist_ok=True)
         logger.info(f"Saving validation artifacts to: {val_dir}")
 
@@ -276,9 +297,13 @@ class XGBSurrogate(object):
         background = report_plots.landscape_image(self.dir_path, self.projection_name)
 
         r2_list, rmse_list, mae_list, euc_list = [], [], [], []
-        kfold = KFold(n_splits=self.cv_folds, shuffle=True, random_state=self.random_state)
+        kfold = KFold(
+            n_splits=self.cv_folds, shuffle=True, random_state=self.random_state
+        )
 
-        progress = LiveProgressBar(f"{self.label} cross-validation folds", total=self.cv_folds)
+        progress = LiveProgressBar(
+            f"{self.label} cross-validation folds", total=self.cv_folds
+        )
         with progress.live() as bar:
             for fold_idx, (train_idx, test_idx) in enumerate(kfold.split(X)):
                 fold_num = fold_idx + 1
@@ -306,34 +331,57 @@ class XGBSurrogate(object):
                 )
 
                 # Persist predictions
-                df_fold = pd.DataFrame({
-                    "true_x": y_test_fold[:, 0],
-                    "true_y": y_test_fold[:, 1],
-                    "pred_x": y_pred_fold[:, 0],
-                    "pred_y": y_pred_fold[:, 1],
-                    "euclidean_error": dists,
-                })
+                df_fold = pd.DataFrame(
+                    {
+                        "true_x": y_test_fold[:, 0],
+                        "true_y": y_test_fold[:, 1],
+                        "pred_x": y_pred_fold[:, 0],
+                        "pred_y": y_pred_fold[:, 1],
+                        "euclidean_error": dists,
+                    }
+                )
                 df_fold.to_csv(
-                    os.path.join(val_dir, f"fold_{fold_num}_predictions.csv"), index=False
+                    os.path.join(val_dir, f"fold_{fold_num}_predictions.csv"),
+                    index=False,
                 )
 
                 # Figures go straight into the report directory as PNG + PDF.
                 report_plots.FoldComparisonPlot(
-                    self.projection_name, fold_num, y_test_fold, y_pred_fold,
-                    (r_squared, euc_mean), self.dir_path,
+                    self.projection_name,
+                    fold_num,
+                    y_test_fold,
+                    y_pred_fold,
+                    (r_squared, euc_mean),
+                    self.dir_path,
                     background_image=background,
                 ).save()
                 report_plots.FoldDistributionsPlot(
-                    self.projection_name, fold_num, y_test_fold, y_pred_fold,
+                    self.projection_name,
+                    fold_num,
+                    y_test_fold,
+                    y_pred_fold,
                     self.dir_path,
                 ).save()
                 report_plots.FoldZonesPlot(
-                    self.projection_name, fold_num, y_test_fold, y_pred_fold,
-                    self.dir_path, random_state=self.random_state,
+                    self.projection_name,
+                    fold_num,
+                    y_test_fold,
+                    y_pred_fold,
+                    self.dir_path,
+                    random_state=self.random_state,
                 ).save()
 
                 # Free all fold-local allocations before next iteration
-                del model, X_train, X_test, y_train_fold, y_test_fold, y_pred_fold, dists, df_fold
+                del (
+                    model,
+                    X_train,
+                    X_test,
+                    y_train_fold,
+                    y_test_fold,
+                    y_pred_fold,
+                    dists,
+                    df_fold,
+                )
                 gc.collect()
 
                 bar.advance()

@@ -13,15 +13,15 @@ import os
 
 import pandas as pd
 
-from .helpers import logger as log_manager
-from .helpers.libraries import load_lib_input
-from .helpers.logger import get_logger
-from .helpers.tracker import PipelineTracker
 from .artifacts.pca import PCAArtifact
 from .artifacts.tmap import TMAPArtifact
 from .artifacts.tsne import TSNEArtifact
 from .artifacts.umap import UMAPArtifact
 from .featurizers.ecfp import ECFPFeaturizer
+from .helpers import logger as log_manager
+from .helpers.libraries import load_lib_input
+from .helpers.logger import get_logger
+from .helpers.tracker import PipelineTracker
 
 logger = get_logger(__name__)
 
@@ -29,8 +29,16 @@ RUN_MANIFEST = "run.json"
 
 
 class Pipeline(object):
-    def __init__(self, lib_input: str, dir_path: str, output_path: str,
-                 no_plots: bool = False, no_report: bool = False):
+    """Project new molecules onto a fitted reference space, then write the report."""
+
+    def __init__(
+        self,
+        lib_input: str,
+        dir_path: str,
+        output_path: str,
+        no_plots: bool = False,
+        no_report: bool = False,
+    ):
         """
         Parameters
         ----------
@@ -80,6 +88,7 @@ class Pipeline(object):
         """Persist the run configuration for the report."""
         try:
             from importlib.metadata import version
+
             pkg_version = version("lazychemvis")
         except Exception:
             pkg_version = "unknown"
@@ -96,6 +105,7 @@ class Pipeline(object):
             json.dump(manifest, f, indent=2)
 
     def run(self):
+        """Compute all four projections, write ``coordinates.csv`` and the report."""
         os.makedirs(self.output_path, exist_ok=True)
         log_path = log_manager.attach_file_sink(self.output_path)
         logger.info(f"Starting transform — log file: {log_path}")
@@ -112,7 +122,7 @@ class Pipeline(object):
         # with the input CSV, so unparseable molecules keep their row. TMAP gives them
         # NaN coordinates; PCA (imputed descriptors) and the t-SNE/UMAP surrogates
         # (all-zero fingerprint) give them a placeholder coordinate instead.
-        df_combined = pd.DataFrame({'smiles': smiles_list})
+        df_combined = pd.DataFrame({"smiles": smiles_list})
 
         self.tracker.start("pca", "RDKit descriptors → frozen PCA")
         df_pca = self._pca_step(smiles_list)
@@ -163,7 +173,8 @@ class Pipeline(object):
 
             self.tracker.start("report", "figures and HTML report")
             reporter = TransformReporter(
-                path=self.output_path, reference_path=self.dir_path,
+                path=self.output_path,
+                reference_path=self.dir_path,
                 make_plots=True,
             )
             report_path = reporter.run() if not self.no_report else None

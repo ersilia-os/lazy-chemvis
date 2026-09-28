@@ -1,7 +1,8 @@
 import os
 from typing import List
-import torch
+
 import joblib
+import torch
 
 from ..featurizers.rdkit_descriptor import RDKitDescriptor
 from ..surrogates.pca import PCAFixed
@@ -19,6 +20,7 @@ class PCAArtifact(object):
     It provides a `transform()` method that takes SMILES strings and returns
     2D PCA coordinates consistent with the pretrained chemical space.
     """
+
     def __init__(self, dir_name: str):
         """
         Initialize the PCAArtifact by loading its components from disk.
