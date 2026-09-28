@@ -1,10 +1,25 @@
 import os
+import re
 import subprocess
 import numpy as np
 
 from ..helpers.logger import get_logger
 
 logger = get_logger(__name__)
+
+# Matches the driver script's "Processed 40000/460000 molecules (8.7%)" progress lines.
+_PCT_RE = re.compile(r"\((\d+(?:\.\d+)?)%\)")
+
+
+def _parse_progress_pct(line: str):
+    """Extract a percentage from a TMAP progress line, or None if it carries none."""
+    match = _PCT_RE.search(line)
+    if match is None:
+        return None
+    try:
+        return float(match.group(1))
+    except ValueError:  # pragma: no cover - defensive
+        return None
 
 # Layout defaults, duplicated from tmap_base so that this module (which runs in the
 # main environment) does not need to import the TMAP-only driver script.
@@ -16,7 +31,7 @@ LOW_MEMORY_DEFAULT_KC = 10
 _INSTALL_HINT = (
     "Create the TMAP environment with:\n"
     '    conda create -n tmap-env -c tmap -c conda-forge python=3.9 "tmap=1.0.6" numpy -y\n'
-    "then pass its full path, e.g. --tmap_env /home/user/anaconda3/envs/tmap-env "
+    "then pass its full path, e.g. --tmap-env /home/user/anaconda3/envs/tmap-env "
     "(conda env list shows the paths)."
 )
 
@@ -44,7 +59,7 @@ def verify_tmap_env(tmap_env: str, timeout: int = 120) -> str:
 
     TMAP runs as a subprocess in a separate conda environment, and the projection
     step comes after featurization. Without an up-front check, a mistyped
-    ``--tmap_env`` is only discovered after the reference descriptors have already
+    ``--tmap-env`` is only discovered after the reference descriptors have already
     been computed, which can be hours into a large fit.
 
     Parameters
@@ -71,7 +86,7 @@ def verify_tmap_env(tmap_env: str, timeout: int = 120) -> str:
     if not os.path.isdir(env_path):
         raise FileNotFoundError(
             f"TMAP environment not found: {env_path}\n"
-            f"--tmap_env must be a path to a conda environment directory, not a "
+            f"--tmap-env must be a path to a conda environment directory, not a "
             f"bare environment name.\n{_INSTALL_HINT}"
         )
 
@@ -204,22 +219,87 @@ class TMAPProjector(object):
 
         logger.info(f"Running TMAP: {' '.join(cmd)}")
 
-        # 5. Execute the command
-        try:
-            result = subprocess.run(cmd, check=True, capture_output=True, text=True)
-            if result.stdout:
-                logger.debug(result.stdout.strip())
-            if result.stderr:
-                logger.debug(result.stderr.strip())
-            logger.success("TMAP projection complete.")
-        except subprocess.CalledProcessError as e:
-            logger.error(f"TMAP failed with return code {e.returncode}")
-            logger.error(f"STDOUT:\n{e.stdout}")
-            logger.error(f"STDERR:\n{e.stderr}")
+        # 5. Execute, streaming the child's output.
+        #
+        # The driver script prints ~30 progress lines, and on a large library the layout
+        # stage runs for a long time. Capturing the output wholesale (capture_output=True)
+        # and logging it only at the end means the user watches a frozen screen for the
+        # slowest step of the fit, so read it line by line instead: every line goes to the
+        # log, and the "[TMAP] Processed n/m" lines are surfaced as live progress.
+        tail = self._run_streaming(cmd)
+
+        if not os.path.exists(os.path.join(output_dir, "reduced.npy")):
             raise RuntimeError(
-                f"The TMAP subprocess failed with return code {e.returncode}.\n"
-                f"STDERR:\n{(e.stderr or '').strip()}"
-            ) from e
+                "The TMAP subprocess reported success but wrote no reduced.npy.\n"
+                f"Last output:\n{tail}"
+            )
+        logger.success("TMAP projection complete.")
+
+    def _run_streaming(self, cmd, tail_lines: int = 40):
+        """
+        Run ``cmd``, forwarding each output line to the log and to a progress bar.
+
+        Returns
+        -------
+        str
+            The last ``tail_lines`` lines of output, so a failure message can carry
+            the child's diagnostics even though nothing was captured wholesale.
+
+        Raises
+        ------
+        RuntimeError
+            If the subprocess exits non-zero.
+        """
+        from collections import deque
+
+        from ..helpers.live import LiveProgressBar
+
+        recent = deque(maxlen=tail_lines)
+        # Total is unknown until the child reports the dataset size; start at 100 and
+        # drive the bar by the percentage the child prints.
+        progress = LiveProgressBar("TMAP layout", total=100, show_bar=True)
+
+        proc = subprocess.Popen(
+            cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+            text=True, bufsize=1,
+        )
+        try:
+            with progress.live() as bar:
+                for raw_line in proc.stdout:
+                    line = raw_line.rstrip()
+                    if not line:
+                        continue
+                    recent.append(line)
+                    logger.debug(f"[tmap] {line}")
+
+                    pct = _parse_progress_pct(line)
+                    if pct is not None:
+                        bar.done = min(100, int(pct))
+                    note = line.replace("[TMAP LOW-MEM]", "").replace("[TMAP]", "").strip()
+                    if note:
+                        bar.set_note(note[:70])
+                proc.wait()
+                # The driver only prints a percentage every ten batches, so a small
+                # library finishes without ever reporting one. Fill the bar on a clean
+                # exit rather than leaving a persisted line reading "0/100".
+                if proc.returncode == 0:
+                    bar.done = bar.total
+        finally:
+            if proc.stdout:
+                proc.stdout.close()
+            if proc.poll() is None:  # pragma: no cover - defensive
+                proc.kill()
+                proc.wait()
+
+        tail = "\n".join(recent)
+        if proc.returncode != 0:
+            logger.error(f"TMAP failed with return code {proc.returncode}")
+            logger.error(f"Output tail:\n{tail}")
+            raise RuntimeError(
+                f"The TMAP subprocess failed with return code {proc.returncode}.\n"
+                f"Output tail:\n{tail}"
+            )
+        return tail
 
     @classmethod
     def load(cls, dir_path: str):

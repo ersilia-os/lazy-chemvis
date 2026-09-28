@@ -75,20 +75,20 @@ def load_lib_input(input_value: str):
     if not input_value:
         raise ValueError(
             "No input library given. Pass a path to a CSV file with a header row "
-            "and SMILES in the first column via --lib_input."
+            "and SMILES in the first column via -i/--input."
         )
 
     if not os.path.exists(input_value):
         raise FileNotFoundError(
             f"Input library not found: {input_value}\n"
-            "--lib_input must be a path to an existing CSV file with a header row "
+            "-i/--input must be a path to an existing CSV file with a header row "
             "and SMILES in the first column."
         )
 
     if not os.path.isfile(input_value):
         raise FileNotFoundError(
             f"Input library is a directory, not a file: {input_value}\n"
-            "--lib_input must be a path to a CSV file with a header row and SMILES "
+            "-i/--input must be a path to a CSV file with a header row and SMILES "
             "in the first column."
         )
 

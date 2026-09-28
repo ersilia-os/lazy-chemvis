@@ -103,7 +103,13 @@ class TSNEProjector(object):
         self.save()
 
     def save(self):
-        """Save all t-SNE components to disk."""
+        """
+        Save the t-SNE components needed downstream to disk.
+
+        The openTSNE embedding object is not saved: it carries the full affinity
+        matrix, which is large on big libraries, and nothing reads it back — the
+        surrogate learns from ``reduced.npy``.
+        """
         proj_path = os.path.join(self.dir_path, self.projector_name)
 
         if os.path.exists(proj_path):
@@ -112,9 +118,6 @@ class TSNEProjector(object):
 
         os.makedirs(proj_path)
         logger.info(f"Saving t-SNE projector to: {proj_path}")
-
-        joblib.dump(self.embedding, os.path.join(proj_path, "embedding.pkl"))
-        logger.debug("Saved: embedding.pkl")
 
         joblib.dump(self.pca, os.path.join(proj_path, "pca.pkl"))
         logger.debug("Saved: pca.pkl")
@@ -171,9 +174,6 @@ class TSNEProjector(object):
         logger.debug(f"Perplexity: {perp}")
 
         projector = cls(dir_path=dir_path, perplexity=perp)
-
-        projector.embedding = joblib.load(os.path.join(proj_folder, "embedding.pkl"))
-        logger.debug("Loaded: embedding.pkl")
 
         projector.pca = joblib.load(os.path.join(proj_folder, "pca.pkl"))
         logger.debug("Loaded: pca.pkl")

@@ -12,7 +12,7 @@ policy for unparseable input.
 from rdkit import Chem
 from rdkit import RDLogger
 
-from .logger import get_logger, console
+from .logger import get_logger
 
 RDLogger.DisableLog("rdApp.*")
 
@@ -69,22 +69,17 @@ def validate_smiles(smiles_list, quiet: bool = False):
             "Check that the first column of the input CSV contains valid SMILES."
         )
 
-    if n_invalid:
-        logger.warning(f"Dropped {n_invalid:,} of {n_total:,} unparseable molecules.")
-        if not quiet:
-            # Routed through the Rich console because loguru output is suppressed
-            # package-wide, and silently discarding molecules is not acceptable.
-            examples = ", ".join(
-                f"row {i + 2}: {smi!r}" for i, smi in invalid[:_N_EXAMPLES]
-            )
-            if n_invalid > _N_EXAMPLES:
-                examples += f", … (+{n_invalid - _N_EXAMPLES:,} more)"
-            console.print(
-                f"  [bold yellow]![/bold yellow] Dropped [bold]{n_invalid:,}[/bold] of "
-                f"{n_total:,} molecules that RDKit could not parse "
-                f"([bold]{len(valid_smiles):,}[/bold] retained).\n"
-                f"    {examples}",
-                style="yellow",
-            )
+    if n_invalid and not quiet:
+        # Row numbers are CSV line numbers (1-based, header included) so they can be
+        # looked up directly in the input file.
+        examples = ", ".join(
+            f"row {i + 2}: {smi!r}" for i, smi in invalid[:_N_EXAMPLES]
+        )
+        if n_invalid > _N_EXAMPLES:
+            examples += f", … (+{n_invalid - _N_EXAMPLES:,} more)"
+        logger.warning(
+            f"Dropped {n_invalid:,} of {n_total:,} molecules that RDKit could not "
+            f"parse ({len(valid_smiles):,} retained) — {examples}"
+        )
 
     return valid_smiles, valid_indices

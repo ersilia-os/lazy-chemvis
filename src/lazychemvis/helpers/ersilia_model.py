@@ -12,6 +12,7 @@ non-interactive.
 from ersilia import ModelBase
 from ersilia.api import Model
 
+from .console import quiet
 from .logger import get_logger, console
 
 logger = get_logger(__name__)
@@ -77,5 +78,24 @@ def serve_model(model_id: str) -> Model:
         logger.info(f"Model {model_id} fetched successfully.")
 
     logger.info(f"Serving model: {model_id}")
-    model.serve()
+    # Ersilia prints its own session-management lines while serving; keep them off
+    # the console (they still reach the log file) so they do not break up our output.
+    # fetch() above is left visible on purpose: it can take minutes.
+    with quiet(logger, label=f"ersilia serve {model_id}"):
+        model.serve()
     return model
+
+
+def close_model(model, model_id: str) -> None:
+    """
+    Close a served Ersilia model, keeping Ersilia's own output off the console.
+
+    Parameters
+    ----------
+    model : ersilia.api.Model
+        The served model.
+    model_id : str
+        Ersilia model identifier, for the log record.
+    """
+    with quiet(logger, label=f"ersilia close {model_id}"):
+        model.close()

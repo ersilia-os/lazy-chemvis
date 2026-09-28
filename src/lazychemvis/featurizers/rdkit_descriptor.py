@@ -11,7 +11,8 @@ from sklearn.impute import SimpleImputer
 from sklearn.preprocessing import RobustScaler
 from sklearn.feature_selection import VarianceThreshold
 
-from ..helpers.logger import get_logger, console
+from ..helpers.cache import cache_key, invalidate, mismatch_reason, write_key
+from ..helpers.logger import get_logger
 
 RDLogger.DisableLog("rdApp.*")
 
@@ -63,14 +64,21 @@ class RDKitDescriptor(object):
         self.features = [n.lower() for n in descriptor_names]
         self.dir_path = os.path.abspath(dir_path)
 
-    def fit(self, smiles_list, use_cache=True):
+    def _cache_key(self, smiles_list):
+        """Key identifying this featurizer's output for ``smiles_list``."""
+        return cache_key(
+            smiles_list,
+            featurizer=self.featurizer_name,
+            descriptors=self.features,
+            rdkit_version=Chem.rdBase.rdkitVersion,
+        )
 
+    def fit(self, smiles_list, reuse=True):
         """
         Fit the descriptor preprocessing pipeline on a list of SMILES.
 
         This performs:
         - RDKit descriptor calculation
-        - removal of molecules with invalid descriptors
         - missing value imputation (SimpleImputer)
         - zero-variance feature filtering (VarianceThreshold)
         - robust scaling (RobustScaler)
@@ -79,24 +87,32 @@ class RDKitDescriptor(object):
         ----------
         smiles_list : list of str
             List of SMILES strings used to fit the preprocessing pipeline.
+        reuse : bool, default=True
+            If True and ``dir_path`` already holds the output of a previous fit on
+            the same library with the same settings, load it instead of
+            recomputing. Outputs from a different library are discarded.
 
         Returns
         -------
         RDKitDescriptor
             The fitted descriptor object (self).
         """
-        fp_path = os.path.join(self.dir_path,self.featurizer_name, "X.npy")
+        desc_path = os.path.join(self.dir_path, self.featurizer_name)
+        self._key = self._cache_key(smiles_list)
+        self._from_cache = False
 
-        # 1. Skip computation if fingerprints are already on disk and caching is enabled
-        if use_cache and os.path.exists(fp_path):
-            logger.info(f"Found existing descriptors at {fp_path}. Loading...")
-            X = np.load(fp_path)
-            self.X = X
+        reason = mismatch_reason(desc_path, self._key) if reuse else "--no-cache was given"
+        if reason is None:
+            logger.info(f"Reusing cached RDKit descriptors at {desc_path}")
+            cached = RDKitDescriptor.load(dir_path=self.dir_path)
+            self.imputer = cached.imputer
+            self.feature_filter = cached.feature_filter
+            self.scaler = cached.scaler
+            self.X = cached.X
+            self._from_cache = True
             return self
-        else:
-            if smiles_list is None:
-                raise ValueError("X.npy not found and no smiles_list provided to compute them.")
-            
+        invalidate([desc_path], "RDKit descriptors", reason)
+
         imputer = SimpleImputer()
         feature_filter = VarianceThreshold(threshold=0.0)
         scaler = RobustScaler()
@@ -204,9 +220,13 @@ class RDKitDescriptor(object):
         - RDKit version metadata
         - imputer, feature filter, and scaler objects
         - the fitted descriptor matrix X
+        - the cache key, written last
+
+        Nothing is rewritten when :meth:`fit` reused a cached output.
         """
-        dir_path = self.dir_path
-        desc_path = os.path.join(dir_path, self.featurizer_name)
+        if getattr(self, "_from_cache", False):
+            return
+        desc_path = os.path.join(self.dir_path, self.featurizer_name)
         if os.path.exists(desc_path):
             shutil.rmtree(desc_path)
         os.makedirs(desc_path)
@@ -221,6 +241,8 @@ class RDKitDescriptor(object):
         joblib.dump(self.scaler, os.path.join(desc_path, "scaler.pkl"))
         numpy_path = os.path.join(desc_path, "X.npy")
         np.save(numpy_path, self.X)
+        if getattr(self, "_key", None) is not None:
+            write_key(desc_path, self._key)
 
     @classmethod
     def load(cls, dir_path: str, load_X: bool = True):
@@ -253,19 +275,12 @@ class RDKitDescriptor(object):
             if rdkit_version and current_rdkit_version != rdkit_version:
                 # A warning, not an error: descriptor values are stable across most
                 # RDKit releases, and refusing to load would make every published
-                # reference space unusable on any other version. Routed through the
-                # Rich console because loguru output is suppressed package-wide.
+                # reference space unusable on any other version.
                 logger.warning(
-                    f"RDKit version mismatch: got {current_rdkit_version}, "
-                    f"reference space was fitted with {rdkit_version}."
-                )
-                console.print(
-                    f"  [bold yellow]![/bold yellow] RDKit version mismatch: this "
-                    f"reference space was fitted with [bold]{rdkit_version}[/bold] but "
-                    f"[bold]{current_rdkit_version}[/bold] is installed.\n"
-                    f"    Descriptor values may differ slightly; install "
-                    f"rdkit=={rdkit_version} for an exact reproduction.",
-                    style="yellow",
+                    f"RDKit version mismatch: this reference space was fitted with "
+                    f"{rdkit_version} but {current_rdkit_version} is installed. "
+                    f"Descriptor values may differ slightly; install "
+                    f"rdkit=={rdkit_version} for an exact reproduction."
                 )
         obj.imputer = joblib.load(os.path.join(desc_path, "imputer.pkl"))
         obj.feature_filter = joblib.load(os.path.join(desc_path, "feature_filter.pkl"))

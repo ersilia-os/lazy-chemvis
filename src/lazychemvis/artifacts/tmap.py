@@ -21,7 +21,7 @@ from rdkit import Chem
 from rdkit import RDLogger
 from FPSim2 import FPSim2Engine
 
-from ..helpers.logger import get_logger, console
+from ..helpers.logger import get_logger
 
 RDLogger.DisableLog("rdApp.*")
 
@@ -56,7 +56,7 @@ class TMAPArtifact:
             if not os.path.exists(path):
                 raise FileNotFoundError(
                     f"TMAP artifact not found: {path}\n"
-                    f"Fit a reference space with lazychemvis_fit before transforming."
+                    f"Fit a reference space with `lazychemvis fit` before transforming."
                 )
 
         self.engine = FPSim2Engine(fps_path, in_memory_fps=True)
@@ -107,18 +107,12 @@ class TMAPArtifact:
 
         if failures:
             n_failed = len(failures)
-            logger.warning(
-                f"TMAP: {n_failed:,} of {len(smiles_list):,} molecules could not "
-                f"be placed; their coordinates are NaN."
-            )
             examples = ", ".join(f"row {i + 2}: {smi!r}" for i, smi in failures[:_N_EXAMPLES])
             if n_failed > _N_EXAMPLES:
                 examples += f", … (+{n_failed - _N_EXAMPLES:,} more)"
-            console.print(
-                f"  [bold yellow]![/bold yellow] TMAP could not place [bold]{n_failed:,}[/bold] "
-                f"of {len(smiles_list):,} molecules; their coordinates are NaN.\n"
-                f"    {examples}",
-                style="yellow",
+            logger.warning(
+                f"TMAP could not place {n_failed:,} of {len(smiles_list):,} molecules; "
+                f"their coordinates are NaN — {examples}"
             )
 
         return coords

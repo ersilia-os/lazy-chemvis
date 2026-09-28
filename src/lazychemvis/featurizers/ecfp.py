@@ -2,8 +2,8 @@
 ECFP (Morgan fingerprint) featurizer.
 
 This module provides the ECFPFeaturizer class, which computes binary Morgan
-fingerprints from SMILES. The fitted transformers and training
-matrix can be saved and reloaded reproducibly.
+fingerprints from SMILES. The fingerprint settings and the reference matrix can
+be saved and reloaded reproducibly.
 """
 
 import os
@@ -15,7 +15,8 @@ from rdkit import Chem
 from rdkit.Chem import AllChem
 from rdkit import RDLogger
 
-from ..helpers.logger import get_logger, console
+from ..helpers.cache import cache_key, invalidate, mismatch_reason, write_key
+from ..helpers.logger import get_logger
 
 RDLogger.DisableLog("rdApp.*")
 
@@ -24,10 +25,9 @@ logger = get_logger(__name__)
 
 class ECFPFeaturizer(object):
     """
-    Featurizer that computes extended-connectivity fingerprints (ECFP/Morgan)
-    and applies preprocessing (variance filtering → scaling). This maintains
-    consistency across datasets and prepares the features for dimensionality
-    reduction (e.g., TMAP).
+    Featurizer that computes binary extended-connectivity fingerprints
+    (ECFP/Morgan). The fingerprints are used unprocessed: as input to TMAP, and as
+    the features of the t-SNE and UMAP surrogates.
     """
 
     def __init__(self, dir_path: str, radius: int = 2, n_bits: int = 2048):
@@ -81,49 +81,52 @@ class ECFPFeaturizer(object):
 
         if n_invalid:
             logger.warning(
-                f"{n_invalid:,} of {len(smiles_list):,} molecules could not be "
-                f"parsed; their fingerprints are all-zero."
-            )
-            console.print(
-                f"  [bold yellow]![/bold yellow] {n_invalid:,} of "
-                f"{len(smiles_list):,} molecules could not be parsed by RDKit — "
-                f"their fingerprints are all-zero and their coordinates are "
-                f"not meaningful.",
-                style="yellow",
+                f"{n_invalid:,} of {len(smiles_list):,} molecules could not be parsed "
+                f"by RDKit — their fingerprints are all-zero, so their coordinates are "
+                f"not meaningful."
             )
 
         return X
 
-    def fit(self, smiles_list, use_cache=True):
-        """
-        Fit the preprocessing pipeline on a list of SMILES.
+    def _cache_key(self, smiles_list):
+        """Key identifying this featurizer's output for ``smiles_list``."""
+        return cache_key(
+            smiles_list,
+            featurizer=self.featurizer_name,
+            radius=self.radius,
+            n_bits=self.n_bits,
+            rdkit_version=Chem.rdBase.rdkitVersion,
+        )
 
-        Steps:
-        - compute Morgan fingerprints
-        - remove invalid molecules
-        - apply VarianceThreshold to remove constant bits
-        - apply RobustScaler to reduce skewness
+    def fit(self, smiles_list, reuse=True):
+        """
+        Compute the reference fingerprint matrix for a list of SMILES.
 
         Parameters
         ----------
         smiles_list : list of str
-            Molecules used to fit the fingerprint preprocessing.
+            Molecules used as the reference set.
+        reuse : bool, default=True
+            If True and ``dir_path`` already holds fingerprints computed from the
+            same library with the same radius and length, load them instead of
+            recomputing. Fingerprints from a different library are discarded.
 
         Returns
         -------
         ECFPFeaturizer
             The fitted featurizer (self).
         """
-        fp_path = os.path.join(self.dir_path, self.featurizer_name, "X.npy")
+        desc_path = os.path.join(self.dir_path, self.featurizer_name)
+        self._key = self._cache_key(smiles_list)
+        self._from_cache = False
 
-        # Skip computation if fingerprints are already on disk and caching is enabled
-        if use_cache and os.path.exists(fp_path):
-            logger.info(f"Found existing fingerprints at {fp_path}. Loading...")
-            self.X = np.load(fp_path)
-            return self  # early return — do NOT fall through to _compute_fps
-
-        if smiles_list is None:
-            raise ValueError("X.npy not found and no smiles_list provided to compute them.")
+        reason = mismatch_reason(desc_path, self._key) if reuse else "--no-cache was given"
+        if reason is None:
+            logger.info(f"Reusing cached fingerprints at {desc_path}")
+            self.X = np.load(os.path.join(desc_path, "X.npy"))
+            self._from_cache = True
+            return self
+        invalidate([desc_path], "ECFP fingerprints", reason)
 
         logger.info(f"Computing fingerprints for {len(smiles_list):,} molecules...")
         self.X = self._compute_fps(smiles_list)
@@ -132,7 +135,7 @@ class ECFPFeaturizer(object):
 
     def transform(self, smiles_list):
         """
-        Transform SMILES into processed ECFP vectors using the fitted pipeline.
+        Compute fingerprints for SMILES with the stored radius and length.
 
         Parameters
         ----------
@@ -142,14 +145,19 @@ class ECFPFeaturizer(object):
         Returns
         -------
         numpy.ndarray
-            Array of shape (n_molecules, n_processed_bits).
+            Binary array of shape (n_molecules, n_bits).
         """
         return self._compute_fps(smiles_list)
 
     def save(self):
         """
-        Save the fitted featurizer (feature filter, scaler, X) to disk.
+        Save the featurizer settings and fingerprint matrix to disk.
+
+        The cache key is written last. Nothing is rewritten when :meth:`fit`
+        reused a cached output.
         """
+        if getattr(self, "_from_cache", False):
+            return
         desc_path = os.path.join(self.dir_path, self.featurizer_name)
         if os.path.exists(desc_path):
             shutil.rmtree(desc_path)
@@ -167,6 +175,8 @@ class ECFPFeaturizer(object):
 
         np.save(os.path.join(desc_path, "X.npy"), self.X)
         logger.debug(f"Saved: {desc_path}/X.npy ({self.X.shape[0]:,} molecules)")
+        if getattr(self, "_key", None) is not None:
+            write_key(desc_path, self._key)
 
     @classmethod
     def load(cls, dir_path: str, load_X: bool = True):
@@ -176,7 +186,7 @@ class ECFPFeaturizer(object):
         Returns
         -------
         ECFPFeaturizer
-            Featurizer with restored preprocessing and parameters.
+            Featurizer with its radius and length restored.
         """
         desc_path = os.path.join(dir_path, "ecfp")
         with open(os.path.join(desc_path, "featurizer.json"), "r") as f:
