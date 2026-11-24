@@ -24,6 +24,7 @@ from .console import (
     set_active_color,
     summary_panel,
 )
+from .environment import peak_rss_gb
 
 # Accent colour per pipeline step, from stylia's named palette.
 STEP_COLORS = {
@@ -67,6 +68,8 @@ class PipelineTracker(object):
         self._step_t0 = None
         self._current = None
         self.timings = {}
+        # Peak memory of the run so far, read as each step closes.
+        self.peak_memory = {}
 
     # ------------------------------------------------------------------
     # Run lifecycle
@@ -118,7 +121,7 @@ class PipelineTracker(object):
 
     def complete(self, key=None, rows=None, ok=True):
         """
-        Close a step, recording and printing its wall-clock time.
+        Close a step, recording its wall-clock time and the run's peak memory.
 
         Parameters
         ----------
@@ -133,6 +136,8 @@ class PipelineTracker(object):
         elapsed = time.time() - self._step_t0 if self._step_t0 else None
         if key and elapsed is not None:
             self.timings[key] = elapsed
+        if key:
+            self.peak_memory[key] = peak_rss_gb()
         stamp = f"{elapsed:.1f}s" if elapsed is not None else "—"
         caption = resource_caption()
         tail = f"  [dim]·  {caption}[/dim]" if caption else ""

@@ -454,18 +454,57 @@ def _surrogate_section(report_dir, cells_map, fetcher):
 
 
 def _performance_section(report_dir, cells_map, fetcher):
-    """Wall-clock timings."""
+    """Wall-clock timings and, for runs that recorded it, peak memory."""
     timings = fetcher.timings()
     if not timings:
         return ""
-    rows = [[PROJECTION_LABELS.get(k, k), f"{v:.1f}"] for k, v in timings.items()]
     total = sum(timings.values())
-    rows.append(["<strong>total</strong>", f"<strong>{total:.1f}</strong>"])
+
+    # Runs fitted before peak memory was recorded keep the timings-only table.
+    memory = fetcher.peak_memory()
+    after_step = memory.get("after_step", {})
+    if not after_step:
+        rows = [[PROJECTION_LABELS.get(k, k), f"{v:.1f}"] for k, v in timings.items()]
+        rows.append(["<strong>total</strong>", f"<strong>{total:.1f}</strong>"])
+        headers = ["Step", "Seconds"]
+        lede = "Wall-clock time per pipeline step."
+    else:
+
+        def gb(value):
+            return f"{value:.1f}" if value is not None else "—"
+
+        rows = [
+            [
+                PROJECTION_LABELS.get(k, k),
+                f"{v:.1f}",
+                gb(after_step.get(k, {}).get("main")),
+            ]
+            for k, v in timings.items()
+        ]
+        run_peak = memory.get("run", {})
+        rows.append(
+            [
+                "<strong>total</strong>",
+                f"<strong>{total:.1f}</strong>",
+                f"<strong>{gb(run_peak.get('main'))}</strong>",
+            ]
+        )
+        headers = ["Step", "Seconds", "Peak RAM (GB)"]
+        lede = (
+            "Wall-clock time per pipeline step, and the peak memory reached by its end."
+        )
+        tmap_peak = run_peak.get("subprocesses")
+        if "tmap" in timings and tmap_peak:
+            lede += (
+                f" The TMAP layout runs as a separate process and peaked at "
+                f"{tmap_peak:.1f} GB."
+            )
+
     return f"""
     <section id="performance">
       <h3>Computational performance</h3>
-      <p class="lede">Wall-clock time per pipeline step.</p>
-      {_table(["Step", "Seconds"], rows)}
+      <p class="lede">{lede}</p>
+      {_table(headers, rows)}
       <div style="height:16px"></div>
       <div class="grid">{_card(report_dir, "step_timing", cells_map)}</div>
     </section>"""

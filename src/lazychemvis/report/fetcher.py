@@ -225,6 +225,10 @@ class ResultsFetcher(object):
         """Per-step wall-clock times from the manifest, or {}."""
         return self.manifest().get("timings", {})
 
+    def peak_memory(self):
+        """Peak memory (GB) from the manifest, or {} for runs that predate it."""
+        return self.manifest().get("peak_memory_gb", {})
+
     # ------------------------------------------------------------------
     # Transform outputs
     # ------------------------------------------------------------------

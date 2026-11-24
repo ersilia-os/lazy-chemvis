@@ -55,7 +55,9 @@ def serve_model(model_id: str) -> Model:
         If the model could not be fetched. The most common cause is Docker not
         running, since models are pulled from DockerHub by default.
     """
-    model = Model(model_id=model_id)
+    # Positional on purpose: the keyword is ``model_id`` up to Ersilia 0.1.62 and
+    # ``model`` from 0.1.63 on.
+    model = Model(model_id)
 
     if not is_available_locally(model_id):
         logger.info(f"Model {model_id} is not available locally. Fetching it...")

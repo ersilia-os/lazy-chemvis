@@ -170,8 +170,8 @@ class RDKitDescriptor(object):
         """
         Transform a list of SMILES into preprocessed descriptor vectors.
 
-        Applies the previously fitted preprocessing steps:
-        imputation → variance filtering → clipping → scaling.
+        Applies the previously fitted preprocessing steps, in the same order as
+        :meth:`fit`: clipping → imputation → variance filtering → scaling.
 
         Parameters
         ----------

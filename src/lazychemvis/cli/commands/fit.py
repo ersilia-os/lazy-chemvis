@@ -32,8 +32,8 @@ import rich_click as click
 @click.option(
     "--no-cache",
     is_flag=True,
-    help="Recompute every featurizer output instead of reusing the ones "
-    "already in the reference directory.",
+    help="Recompute the featurizations and the TMAP layout instead of reusing "
+    "the ones already in the reference directory.",
 )
 @click.option(
     "--low-memory",

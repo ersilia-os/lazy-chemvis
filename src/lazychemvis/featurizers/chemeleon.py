@@ -9,6 +9,8 @@ from rdkit import RDLogger
 
 from ..helpers.cache import cache_key, invalidate, mismatch_reason, write_key
 from ..helpers.console import quiet
+from ..helpers.cost import COST_FILENAME, add_cost, read_cost
+from ..helpers.environment import peak_rss_gb
 from ..helpers.ersilia_model import close_model, serve_model
 from ..helpers.live import LiveProgressBar
 from ..helpers.logger import get_logger
@@ -45,6 +47,8 @@ class CheMeleonFeaturizer(object):
         self.batch_size = 2000
         self.X = None
         self._from_cache = False
+        # Cost of the batches computed by earlier, interrupted runs.
+        self.prior_cost = None
 
     @property
     def model(self):
@@ -79,6 +83,9 @@ class CheMeleonFeaturizer(object):
             invalidate([temp_dir], f"{self.featurizer_name} batches", reason)
         os.makedirs(temp_dir, exist_ok=True)
         write_key(temp_dir, key)
+        # Read before this run adds to it: what earlier runs spent on the batches
+        # that are about to be reused.
+        self.prior_cost = read_cost(temp_dir)
 
         # Fetch and serve up front, but only if there is anything left to
         # compute: a missing model or a stopped Docker daemon should surface as
@@ -104,7 +111,15 @@ class CheMeleonFeaturizer(object):
 
                 current_batch_smiles = smiles_list[i : i + batch_size]
                 bar.set_note(f"molecules {i:,}–{i + len(current_batch_smiles):,}")
+                batch_t0 = time.time()
                 self._run_batch(batch_idx, i, current_batch_smiles, batch_file)
+                add_cost(
+                    temp_dir,
+                    {
+                        "seconds": time.time() - batch_t0,
+                        "peak_memory_gb": peak_rss_gb(),
+                    },
+                )
 
     def _run_batch(self, batch_idx, i, current_batch_smiles, batch_file):
         """Run one batch through the model, with retries, and persist it."""
@@ -174,6 +189,7 @@ class CheMeleonFeaturizer(object):
         x_path = os.path.join(desc_path, "X.npy")
         key = self._cache_key(smiles_list)
         self._from_cache = False
+        self.prior_cost = None
 
         reason = mismatch_reason(desc_path, key) if reuse else "--no-cache was given"
         if reason is None and os.path.exists(x_path):
@@ -181,7 +197,11 @@ class CheMeleonFeaturizer(object):
             self.X = np.load(x_path)
             self._from_cache = True
             return self
-        stale = [x_path, os.path.join(desc_path, "cache.json")]
+        stale = [
+            x_path,
+            os.path.join(desc_path, "cache.json"),
+            os.path.join(desc_path, COST_FILENAME),
+        ]
         if not reuse:
             stale.append(temp_dir)
         invalidate(stale, f"{self.featurizer_name} embeddings", reason or "incomplete")

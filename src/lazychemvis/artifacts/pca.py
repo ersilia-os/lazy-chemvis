@@ -2,10 +2,13 @@ import os
 from typing import List
 
 import joblib
-import torch
+import numpy as np
 
 from ..featurizers.rdkit_descriptor import RDKitDescriptor
-from ..surrogates.pca import PCAFixed
+from ..helpers.logger import get_logger
+from ..surrogates.pca import SURROGATE_FILE, project
+
+logger = get_logger(__name__)
 
 
 class PCAArtifact(object):
@@ -14,7 +17,7 @@ class PCAArtifact(object):
 
     This class loads:
       - a fitted RDKitDescriptor featurizer
-      - a PyTorch PCA surrogate (fixed PCA transform)
+      - the fitted PCA mean and components
       - a MinMaxScaler for final coordinate scaling
 
     It provides a `transform()` method that takes SMILES strings and returns
@@ -31,16 +34,47 @@ class PCAArtifact(object):
             Path to the directory containing:
               - the RDKit descriptor featurizer
               - the "pca" folder with:
-                    - surrogate.pt  (PyTorch PCA model)
+                    - surrogate.npz (PCA mean and components), or, in reference
+                      spaces fitted before it existed, orig.pkl (sklearn PCA)
                     - axis_scaler.pkl (MinMaxScaler)
         """
         self.artifact_name = "pca"
         self.dir_name = os.path.abspath(dir_name)
         self.featurizer = RDKitDescriptor.load(dir_path=self.dir_name, load_X=False)
-        file_path = os.path.join(dir_name, self.artifact_name, "surrogate.pt")
-        self.model = PCAFixed.load(file_path)
-        self.scaler = joblib.load(
-            os.path.join(dir_name, self.artifact_name, "axis_scaler.pkl")
+        proj_path = os.path.join(self.dir_name, self.artifact_name)
+        self.mean, self.components = self._load_pca(proj_path)
+        self.scaler = joblib.load(os.path.join(proj_path, "axis_scaler.pkl"))
+
+    @staticmethod
+    def _load_pca(proj_path):
+        """
+        Return the fitted PCA mean and components.
+
+        Reference spaces fitted before ``surrogate.npz`` existed stored the same
+        two arrays in a PyTorch ``surrogate.pt``. Those spaces also hold the fitted
+        sklearn PCA as ``orig.pkl``, which carries them too, so they keep working
+        without PyTorch.
+        """
+        npz_path = os.path.join(proj_path, SURROGATE_FILE)
+        if os.path.exists(npz_path):
+            with np.load(npz_path) as data:
+                return data["mean"], data["components"]
+
+        orig_path = os.path.join(proj_path, "orig.pkl")
+        if os.path.exists(orig_path):
+            logger.debug(
+                f"No {SURROGATE_FILE}; reading the fitted PCA from {orig_path}"
+            )
+            pca = joblib.load(orig_path)
+            return (
+                np.asarray(pca.mean_, dtype=np.float64),
+                np.asarray(pca.components_, dtype=np.float64),
+            )
+
+        raise FileNotFoundError(
+            f"PCA artifact not found in {proj_path}: expected {SURROGATE_FILE} or "
+            f"orig.pkl. Reference spaces holding only surrogate.pt were made by an "
+            f"older LazyChemVis; refit the space with `lazychemvis fit`."
         )
 
     def transform(self, smiles_list: List[str]):
@@ -49,7 +83,7 @@ class PCAArtifact(object):
 
         Steps:
           1. Compute RDKit descriptors with the stored featurizer.
-          2. Apply the PCA surrogate model (PyTorch).
+          2. Project them onto the fitted principal components.
           3. Scale the resulting coordinates to [-1, 1] using the stored MinMaxScaler.
 
         Parameters
@@ -62,13 +96,6 @@ class PCAArtifact(object):
         np.ndarray of shape (n_samples, 2)
             Scaled PCA coordinates.
         """
-        # Compute standardized RDKit descriptors
         X = self.featurizer.transform(smiles_list)
-
-        # Apply fixed PCA transformation
-        X = self.model(torch.tensor(X, dtype=torch.float32)).numpy()
-
-        # Scale PCA axes to the reference [-1, 1] range
-        X = self.scaler.transform(X)
-
-        return X
+        X = project(X, self.mean, self.components)
+        return self.scaler.transform(X)

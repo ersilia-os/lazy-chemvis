@@ -31,19 +31,17 @@ LazyChemVis installs in two sizes. The base install is enough to project molecul
 existing reference space; fitting a new one needs the `fit` extra.
 
 ```bash
-conda create -n lazychemvis python=3.10
+conda create -n lazychemvis python=3.11
 conda activate lazychemvis
 
 # Projecting only (lazychemvis transform)
-pip install "lazychemvis @ git+https://github.com/ersilia-os/lazy-chemvis.git" \
-    --extra-index-url https://download.pytorch.org/whl/cpu
+pip install "lazychemvis @ git+https://github.com/ersilia-os/lazy-chemvis.git"
 
 # Fitting and projecting (lazychemvis fit and lazychemvis transform)
-pip install "lazychemvis[fit] @ git+https://github.com/ersilia-os/lazy-chemvis.git" \
-    --extra-index-url https://download.pytorch.org/whl/cpu
+pip install "lazychemvis[fit] @ git+https://github.com/ersilia-os/lazy-chemvis.git"
 ```
 
-`--extra-index-url` installs the CPU-only build of PyTorch.
+LazyChemVis supports Python 3.11 and 3.12.
 
 ### 2. TMAP environment (required for `fit` only)
 

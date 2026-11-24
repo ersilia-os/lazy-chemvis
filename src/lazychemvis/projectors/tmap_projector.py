@@ -4,9 +4,14 @@ import subprocess
 
 import numpy as np
 
+from ..helpers.cache import invalidate, mismatch_reason, read_key, write_key
 from ..helpers.logger import get_logger
 
 logger = get_logger(__name__)
+
+#: Names the graph construction in the cache key, so a layout produced by a
+#: different algorithm (e.g. the pre-MinHash driver) is never reused.
+LAYOUT_ALGORITHM = "minhash-lshforest"
 
 # Matches the driver script's "Processed 40000/460000 molecules (8.7%)" progress lines.
 _PCT_RE = re.compile(r"\((\d+(?:\.\d+)?)%\)")
@@ -29,6 +34,7 @@ DEFAULT_K = 100
 DEFAULT_KC = 1000
 LOW_MEMORY_DEFAULT_K = 40
 LOW_MEMORY_DEFAULT_KC = 10
+DEFAULT_N_TREES = 8
 
 _INSTALL_HINT = (
     "Create the TMAP environment with:\n"
@@ -134,6 +140,7 @@ class TMAPProjector(object):
         num_threads: int = 4,
         low_memory: bool = False,
         n_permutations: int = 128,
+        n_trees: int = DEFAULT_N_TREES,
         batch_size: int = 10000,
     ):
         """
@@ -155,7 +162,10 @@ class TMAPProjector(object):
         low_memory : bool, default=False
             If True, use ultra-low memory mode for datasets > 1M molecules
         n_permutations : int, default=128
-            Number of LSH permutations (reduced to 64 in low_memory mode)
+            Number of MinHash permutations used to sign each fingerprint
+            (capped at 64 in low_memory mode)
+        n_trees : int, default=8
+            Number of prefix trees in the LSH forest; must divide n_permutations
         batch_size : int, default=10000
             Batch size for processing molecules
         """
@@ -179,9 +189,57 @@ class TMAPProjector(object):
 
         self.num_threads = num_threads
         self.n_permutations = n_permutations
+        self.n_trees = n_trees
         self.batch_size = batch_size
+        self._from_cache = False
 
-    def fit(self, tmap_env: str = "tmap-env"):
+    def _cache_key(self):
+        """
+        Key identifying the layout this projector would produce, or None.
+
+        The layout is a function of the ECFP matrix and the layout settings only, so
+        the key is the ECFP featurizer's own key (library hash, radius, bit length,
+        RDKit version) plus those settings. Batch size is left out: it changes how
+        the forest is filled, not what it contains. Returns None when the
+        fingerprints carry no key, since their origin then cannot be verified.
+        """
+        ecfp_key = read_key(os.path.join(self.dir_path, "ecfp"))
+        if ecfp_key is None:
+            return None
+        key = dict(ecfp_key)
+        key.pop("featurizer", None)
+        key.update(
+            projector=self.projector_name,
+            algorithm=LAYOUT_ALGORITHM,
+            k=self.k,
+            kc=self.kc,
+            n_permutations=min(self.n_permutations, 64)
+            if self.low_memory
+            else self.n_permutations,
+            n_trees=self.n_trees,
+            low_memory=self.low_memory,
+        )
+        return key
+
+    def _reusable(self, output_dir, key):
+        """Return None if the layout on disk can be reused, else the reason why not."""
+        if key is None:
+            return "the ECFP fingerprints have no cache key"
+        reason = mismatch_reason(output_dir, key)
+        if reason is not None:
+            return reason
+        reduced = os.path.join(output_dir, "reduced.npy")
+        if not (
+            os.path.exists(reduced)
+            and os.path.exists(os.path.join(output_dir, "edges.npz"))
+        ):
+            return "the layout files are missing"
+        n_rows = np.load(reduced, mmap_mode="r").shape[0]
+        if n_rows != key["n_molecules"]:
+            return f"reduced.npy has {n_rows:,} rows, expected {key['n_molecules']:,}"
+        return None
+
+    def fit(self, tmap_env: str = "tmap-env", reuse: bool = True):
         """
         Execute the TMAP projection using the optimized memory-efficient version.
 
@@ -189,16 +247,39 @@ class TMAPProjector(object):
         ----------
         tmap_env : str
             Path to the TMAP conda environment
+        reuse : bool, default=True
+            If True and ``tmap/`` already holds a layout computed from the same
+            ECFP fingerprints with the same settings, keep it instead of running
+            the layout again. On a large library the layout takes hours, so this is
+            what makes resuming a fit that failed after the TMAP step cheap.
         """
         # 1. Define paths
         input_path = os.path.join(self.dir_path, "ecfp", "X.npy")
         output_dir = os.path.join(self.dir_path, self.projector_name)
+        self._from_cache = False
 
         if not os.path.exists(input_path):
             raise FileNotFoundError(
                 f"ECFP fingerprints not found at {input_path}. "
                 f"Run the ECFP featurizer before the TMAP projection."
             )
+
+        key = self._cache_key()
+        reason = self._reusable(output_dir, key) if reuse else "--no-cache was given"
+        if reason is None:
+            logger.info(f"Reusing cached TMAP layout at {output_dir}")
+            self._from_cache = True
+            return
+        # Drop the old key before the layout files are overwritten, so a run killed
+        # mid-layout cannot leave a key vouching for half-written coordinates.
+        invalidate(
+            [
+                os.path.join(output_dir, name)
+                for name in ("cache.json", "cost.json", "reduced.npy", "edges.npz")
+            ],
+            "TMAP layout",
+            reason,
+        )
 
         if not os.path.exists(output_dir):
             os.makedirs(output_dir)
@@ -211,8 +292,12 @@ class TMAPProjector(object):
         python_exe = verify_tmap_env(tmap_env)
 
         # 4. Construct the command as a LIST
+        # -u: unbuffered output. Writing into a pipe, the child would otherwise
+        # block-buffer its prints, and no progress line would reach the log or the
+        # progress bar until the layout had finished.
         cmd = [
             python_exe,
+            "-u",
             script_path,
             "--input",
             input_path,
@@ -220,6 +305,8 @@ class TMAPProjector(object):
             output_dir,
             "--n_permutations",
             str(self.n_permutations),
+            "--n_trees",
+            str(self.n_trees),
             "--batch_size",
             str(self.batch_size),
             "--k",
@@ -251,6 +338,9 @@ class TMAPProjector(object):
                 "The TMAP subprocess reported success but wrote no reduced.npy.\n"
                 f"Last output:\n{tail}"
             )
+        # Written last: its presence means the layout files are complete.
+        if key is not None:
+            write_key(output_dir, key)
         logger.success("TMAP projection complete.")
 
     def _run_streaming(self, cmd, tail_lines: int = 40):

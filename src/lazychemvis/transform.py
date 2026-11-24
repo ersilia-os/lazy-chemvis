@@ -85,13 +85,8 @@ class Pipeline(object):
         return pd.DataFrame(X_reduced, columns=["umap_x", "umap_y"])
 
     def _write_manifest(self, n_input):
-        """Persist the run configuration for the report."""
-        try:
-            from importlib.metadata import version
-
-            pkg_version = version("lazychemvis")
-        except Exception:
-            pkg_version = "unknown"
+        """Persist the run configuration, versions and resource use."""
+        from .helpers.environment import package_versions, peak_rss_gb
 
         manifest = {
             "mode": "transform",
@@ -99,7 +94,11 @@ class Pipeline(object):
             "reference_path": self.dir_path,
             "n_input": n_input,
             "timings": dict(self.tracker.timings),
-            "versions": {"lazychemvis": pkg_version},
+            "peak_memory_gb": {
+                "run": peak_rss_gb(),
+                "after_step": dict(self.tracker.peak_memory),
+            },
+            "versions": package_versions(),
         }
         with open(os.path.join(self.output_path, RUN_MANIFEST), "w") as f:
             json.dump(manifest, f, indent=2)

@@ -13,8 +13,11 @@ import gc
 import importlib.util
 import json
 import os
+import time
 
 from .helpers import logger as log_manager
+from .helpers.cost import combine, merge_measures, read_cost, write_cost
+from .helpers.environment import peak_rss_gb
 from .helpers.libraries import load_lib_input
 from .helpers.logger import get_logger
 from .helpers.tracker import PipelineTracker
@@ -33,10 +36,7 @@ FIT_DEPENDENCIES = {
     "optuna": "optuna",
 }
 
-FIT_INSTALL_HINT = (
-    'pip install "lazychemvis[fit] @ git+https://github.com/ersilia-os/lazy-chemvis.git" '
-    "--extra-index-url https://download.pytorch.org/whl/cpu"
-)
+FIT_INSTALL_HINT = 'pip install "lazychemvis[fit] @ git+https://github.com/ersilia-os/lazy-chemvis.git"'
 
 
 def check_fit_dependencies():
@@ -113,13 +113,48 @@ class Pipeline(object):
         self.tracker = PipelineTracker()
         self.manifest = {}
         self.cache_reused = {}
+        # What the outputs reused in each step cost when they were produced, and
+        # the reused outputs whose cost was never recorded.
+        self.carried = {}
+        self.unmeasured = {}
 
-    def _record_reuse(self, featurizer):
-        """Note whether a featurizer reused its cached output, and say so on the console."""
-        reused = bool(getattr(featurizer, "_from_cache", False))
-        self.cache_reused[featurizer.featurizer_name] = reused
+    def _record_reuse(self, unit, started):
+        """
+        Note whether a cacheable output was reused, and account for what it cost.
+
+        A freshly computed output gets a ``cost.json`` with the time since
+        ``started`` and the peak memory so far, plus whatever earlier interrupted
+        runs spent on it. A reused output contributes its stored cost to the
+        current step instead, so that ``run.json`` reports the measurements of the
+        run that actually did the work.
+
+        Parameters
+        ----------
+        unit : object
+            A featurizer or projector that has just been fitted (and saved).
+        started : float
+            ``time.time()`` taken just before its ``fit``.
+        """
+        name = getattr(unit, "featurizer_name", None) or unit.projector_name
+        out_dir = os.path.join(self.dir_path, name)
+        step = self.tracker._current
+        reused = bool(getattr(unit, "_from_cache", False))
+        self.cache_reused[name] = reused
         if reused:
-            self.tracker.substep(f"{featurizer.featurizer_name}: reused cached output")
+            self.tracker.substep(f"{name}: reused cached output")
+            prior = read_cost(out_dir)
+            if prior is None:
+                # Produced before costs were recorded: its time and memory are lost.
+                self.unmeasured.setdefault(step, []).append(name)
+        else:
+            prior = getattr(unit, "prior_cost", None)
+            this_run = {
+                "seconds": time.time() - started,
+                "peak_memory_gb": peak_rss_gb(),
+            }
+            write_cost(out_dir, combine(this_run, prior))
+        if prior:
+            self.carried.setdefault(step, []).append(dict(prior, output=name))
 
     def _pca_step(self, smiles_list):
         """Execute the descriptor → PCA → surrogate → plot sequence."""
@@ -132,9 +167,10 @@ class Pipeline(object):
 
         self.tracker.substep("RDKit featurization")
         featurizer = RDKitDescriptor(dir_path=self.dir_path)
+        started = time.time()
         featurizer.fit(smiles_list, reuse=not self.no_cache)
         featurizer.save()
-        self._record_reuse(featurizer)
+        self._record_reuse(featurizer, started)
         del featurizer
         gc.collect()
 
@@ -170,9 +206,10 @@ class Pipeline(object):
 
         self.tracker.substep("ECFP featurization")
         featurizer = ECFPFeaturizer(dir_path=self.dir_path)
+        started = time.time()
         featurizer.fit(smiles_list, reuse=not self.no_cache)
         featurizer.save()
-        self._record_reuse(featurizer)
+        self._record_reuse(featurizer, started)
         self.manifest.setdefault("tmap", {}).update(
             {"radius": featurizer.radius, "n_bits": featurizer.n_bits}
         )
@@ -186,12 +223,15 @@ class Pipeline(object):
             n_permutations=64 if self.low_memory else 128,
             batch_size=5000 if self.low_memory else 10000,
         )
-        tmap_proj.fit(self.tmap_env)
+        started = time.time()
+        tmap_proj.fit(self.tmap_env, reuse=not self.no_cache)
+        self._record_reuse(tmap_proj, started)
         self.manifest["tmap"].update(
             {
                 "k": tmap_proj.k,
                 "kc": tmap_proj.kc,
                 "n_permutations": tmap_proj.n_permutations,
+                "n_trees": tmap_proj.n_trees,
                 "low_memory": self.low_memory,
             }
         )
@@ -221,9 +261,10 @@ class Pipeline(object):
 
         self.tracker.substep("CheMeleon featurization")
         featurizer = CheMeleonFeaturizer(dir_path=self.dir_path)
+        started = time.time()
         featurizer.fit(smiles_list=smiles_list, reuse=not self.no_cache)
         featurizer.save()
-        self._record_reuse(featurizer)
+        self._record_reuse(featurizer, started)
         self.manifest.setdefault("tsne", {})["model_id"] = featurizer._model_id
         if hasattr(featurizer, "cleanup"):
             featurizer.cleanup()
@@ -265,9 +306,10 @@ class Pipeline(object):
 
         self.tracker.substep("CLAMP featurization")
         featurizer = CLAMPFeaturizer(dir_path=self.dir_path)
+        started = time.time()
         featurizer.fit(smiles_list=smiles_list, reuse=not self.no_cache)
         featurizer.save()
-        self._record_reuse(featurizer)
+        self._record_reuse(featurizer, started)
         self.manifest.setdefault("umap", {})["model_id"] = featurizer._model_id
         if hasattr(featurizer, "cleanup"):
             featurizer.cleanup()
@@ -316,15 +358,33 @@ class Pipeline(object):
         ]
 
     def _write_manifest(self, n_input, n_valid):
-        """Persist the run configuration for the report."""
-        from rdkit import Chem
+        """Persist the run configuration, versions and resource use."""
+        from .helpers.environment import package_versions
 
-        try:
-            from importlib.metadata import version
-
-            pkg_version = version("lazychemvis")
-        except Exception:
-            pkg_version = "unknown"
+        # Timings and peaks as if every reused output had been computed in this run.
+        timings_this_run = dict(self.tracker.timings)
+        after_step_this_run = dict(self.tracker.peak_memory)
+        run_peak_this_run = peak_rss_gb()
+        timings, after_step, run_peak, peak_unknown = merge_measures(
+            timings_this_run, after_step_this_run, run_peak_this_run, self.carried
+        )
+        # Outputs reused without any recorded cost: their peak is unknown as well.
+        for step in self.unmeasured:
+            after_step[step] = {"main": None, "subprocesses": None}
+            run_peak = {"main": None, "subprocesses": None}
+            if step not in peak_unknown:
+                peak_unknown.append(step)
+        if self.carried or self.unmeasured:
+            self.manifest["resumed"] = {
+                "carried_over": self.carried,
+                "unmeasured": self.unmeasured,
+                "peak_memory_unknown": peak_unknown,
+                "timings_this_run": timings_this_run,
+                "peak_memory_gb_this_run": {
+                    "run": run_peak_this_run,
+                    "after_step": after_step_this_run,
+                },
+            }
 
         self.manifest.update(
             {
@@ -336,11 +396,9 @@ class Pipeline(object):
                 "low_memory": self.low_memory,
                 "no_cache": self.no_cache,
                 "cache_reused": dict(self.cache_reused),
-                "timings": dict(self.tracker.timings),
-                "versions": {
-                    "lazychemvis": pkg_version,
-                    "rdkit": Chem.rdBase.rdkitVersion,
-                },
+                "timings": timings,
+                "peak_memory_gb": {"run": run_peak, "after_step": after_step},
+                "versions": package_versions(fit=True),
             }
         )
         path = os.path.join(self.dir_path, RUN_MANIFEST)

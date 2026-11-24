@@ -15,6 +15,7 @@ pytest.importorskip("ersilia")
 
 from lazychemvis.featurizers.chemeleon import CheMeleonFeaturizer  # noqa: E402
 from lazychemvis.featurizers.clamp import CLAMPFeaturizer  # noqa: E402
+from lazychemvis.helpers.cost import read_cost  # noqa: E402
 
 
 class FakeModel(object):
@@ -100,3 +101,21 @@ def test_finished_matrix_is_reused_only_for_same_library(
     forced = _featurizer(cls, str(tmp_path), model)
     forced.fit(library_b, reuse=False)
     assert not forced._from_cache and model.calls == 4
+
+
+@pytest.mark.parametrize("cls", [CheMeleonFeaturizer, CLAMPFeaturizer])
+def test_batches_from_the_interrupted_run_keep_their_cost(tmp_path, library_a, cls):
+    with pytest.raises(KeyboardInterrupt):
+        _featurizer(cls, str(tmp_path), FakeModel(fail_on_call=3)).fit(library_a)
+    temp_dir = os.path.join(tmp_path, cls(dir_path=str(tmp_path)).featurizer_name)
+    spent = read_cost(os.path.join(temp_dir, "tmp_batches"))
+    assert spent["seconds"] > 0 and spent["peak_memory_gb"]["main"] > 0
+
+    resumed = _featurizer(cls, str(tmp_path), FakeModel())
+    resumed.fit(library_a)
+    # The resumed run is handed what the two batches before the crash cost.
+    assert resumed.prior_cost == spent
+
+    fresh = _featurizer(cls, str(tmp_path), FakeModel())
+    fresh.fit(library_a, reuse=False)
+    assert fresh.prior_cost is None
