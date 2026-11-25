@@ -5,19 +5,19 @@ This module provides the UMAPProjector class with comprehensive logging,
 memory management, and performance tracking for large-scale datasets.
 """
 
+import gc
 import os
 import shutil
+import time
+
 import joblib
 import numpy as np
-import gc
-import time
 import umap
+from rich.panel import Panel
 from sklearn.preprocessing import MinMaxScaler, StandardScaler
 
-from rich.panel import Panel
-
 from ..featurizers.clamp import CLAMPFeaturizer
-from ..helpers.logger import get_logger, console
+from ..helpers.logger import console, get_logger
 
 logger = get_logger(__name__)
 
@@ -34,8 +34,15 @@ class UMAPProjector(object):
       - Provides memory cleanup and performance tracking
     """
 
-    def __init__(self, dir_path: str, n_neighbors: int = 150, min_dist: float = 0.4,
-                 metric: str = 'cosine', low_memory: bool = True, verbose: bool = False):
+    def __init__(
+        self,
+        dir_path: str,
+        n_neighbors: int = 150,
+        min_dist: float = 0.4,
+        metric: str = "cosine",
+        low_memory: bool = True,
+        verbose: bool = False,
+    ):
         """
         Create a UMAPProjector.
 
@@ -90,7 +97,7 @@ class UMAPProjector(object):
             featurizer = CLAMPFeaturizer.load(dir_path=self.dir_path)
             X = featurizer.X
 
-            self.timing['load_featurizer'] = time.time() - load_start
+            self.timing["load_featurizer"] = time.time() - load_start
             logger.info(
                 f"Loaded: {X.shape[0]:,} molecules × {X.shape[1]} features "
                 f"({self.timing['load_featurizer']:.2f}s)"
@@ -99,14 +106,20 @@ class UMAPProjector(object):
             del featurizer
             gc.collect()
         else:
-            logger.info(f"[1/4] Using provided data: {X.shape[0]:,} molecules × {X.shape[1]} features")
+            logger.info(
+                f"[1/4] Using provided data: {X.shape[0]:,} molecules × {X.shape[1]} features"
+            )
 
         if X is None:
-            raise ValueError("Featurizer matrix X is empty. Run featurizer.fit() first.")
+            raise ValueError(
+                "Featurizer matrix X is empty. Run featurizer.fit() first."
+            )
 
         n_invalid = np.sum(~np.isfinite(X))
         if n_invalid > 0:
-            logger.warning(f"{n_invalid:,} invalid values detected — will be replaced with 0.")
+            logger.warning(
+                f"{n_invalid:,} invalid values detected — will be replaced with 0."
+            )
 
         # 2. Feature scaling
         logger.info("[2/4] Scaling features with StandardScaler...")
@@ -116,7 +129,7 @@ class UMAPProjector(object):
         X_scaled = self.feature_scaler.fit_transform(X)
         X_scaled = np.nan_to_num(X_scaled)
 
-        self.timing['feature_scaling'] = time.time() - scale_start
+        self.timing["feature_scaling"] = time.time() - scale_start
         logger.debug(
             f"Scaled data range: [{X_scaled.min():.3f}, {X_scaled.max():.3f}] "
             f"({self.timing['feature_scaling']:.2f}s)"
@@ -141,16 +154,16 @@ class UMAPProjector(object):
             low_memory=self.low_memory,
             metric=self.metric,
             random_state=42,
-            verbose=self.verbose
+            verbose=self.verbose,
         )
 
         X_embedded = reducer.fit_transform(X_scaled)
         self.reducer = reducer
 
-        self.timing['umap_embedding'] = time.time() - umap_start
+        self.timing["umap_embedding"] = time.time() - umap_start
         logger.info(
             f"UMAP embedding complete. "
-            f"({self.timing['umap_embedding']:.2f}s / {self.timing['umap_embedding']/60:.2f} min)"
+            f"({self.timing['umap_embedding']:.2f}s / {self.timing['umap_embedding'] / 60:.2f} min)"
         )
 
         del X_scaled
@@ -165,7 +178,7 @@ class UMAPProjector(object):
         self.X = scaler.fit_transform(X_embedded)
         self.scaler = scaler
 
-        self.timing['coordinate_scaling'] = time.time() - coord_start
+        self.timing["coordinate_scaling"] = time.time() - coord_start
 
         logger.debug(
             f"Coordinate range: X=[{self.X[:, 0].min():.3f}, {self.X[:, 0].max():.3f}], "
@@ -175,15 +188,15 @@ class UMAPProjector(object):
         del X_embedded
         gc.collect()
 
-        self.timing['total'] = time.time() - total_start
+        self.timing["total"] = time.time() - total_start
         logger.success(
             f"UMAP projection complete. Total time: "
-            f"{self.timing['total']:.2f}s ({self.timing['total']/60:.2f} min)"
+            f"{self.timing['total']:.2f}s ({self.timing['total'] / 60:.2f} min)"
         )
 
         for step, duration in self.timing.items():
-            if step != 'total':
-                pct = (duration / self.timing['total']) * 100
+            if step != "total":
+                pct = (duration / self.timing["total"]) * 100
                 logger.debug(f"  {step}: {duration:.2f}s ({pct:.1f}%)")
 
         logger.info("Saving projector to disk...")
@@ -262,7 +275,9 @@ class UMAPProjector(object):
             f"min_dist={projector.reducer.min_dist})"
         )
 
-        projector.feature_scaler = joblib.load(os.path.join(proj_folder, "feature_scaler.pkl"))
+        projector.feature_scaler = joblib.load(
+            os.path.join(proj_folder, "feature_scaler.pkl")
+        )
         logger.debug("Loaded: feature_scaler.pkl")
 
         projector.scaler = joblib.load(os.path.join(proj_folder, "axis_scaler.pkl"))
@@ -274,10 +289,10 @@ class UMAPProjector(object):
         timing_path = os.path.join(proj_folder, "timing.pkl")
         if os.path.exists(timing_path):
             projector.timing = joblib.load(timing_path)
-            if 'total' in projector.timing:
+            if "total" in projector.timing:
                 logger.debug(
                     f"Original fit time: {projector.timing['total']:.2f}s "
-                    f"({projector.timing['total']/60:.2f} min)"
+                    f"({projector.timing['total'] / 60:.2f} min)"
                 )
 
         logger.success("UMAP projector loaded successfully.")
